@@ -116,7 +116,37 @@ export const dbService = {
         .from('profiles')
         .select('*')
         .single();
-      if (error) throw error;
+      
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // Buat profil default jika belum ada di database
+          const { data: userData, error: userError } = await supabase!.auth.getUser();
+          if (userError || !userData.user) throw new Error('User tidak terautentikasi');
+          
+          const userId = userData.user.id;
+          const fallbackName = userData.user.user_metadata?.name || 'Bestie Peka';
+          const fallbackUsername = userData.user.user_metadata?.username || `peka_${userId.substring(0, 6)}`;
+          
+          const newProfile = {
+            id: userId,
+            name: fallbackName,
+            username: fallbackUsername,
+            aura_points: 150,
+            level: 'Peka-Beginner',
+            avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${userId}`,
+          };
+          
+          const { data: insertedData, error: insertError } = await supabase!
+            .from('profiles')
+            .insert(newProfile)
+            .select()
+            .single();
+            
+          if (insertError) throw insertError;
+          return insertedData;
+        }
+        throw error;
+      }
       return data;
     }
   },
