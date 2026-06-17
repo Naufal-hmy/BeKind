@@ -1,56 +1,70 @@
-# Welcome to your Expo app 👋
+# BeKind - Kindness Reminder Agent 🌟
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Aplikasi mobile berbasis **React Native (Expo)** yang berfungsi sebagai asisten kebaikan otonom. Aplikasi ini secara otomatis memantau waktu luang (kalender kesibukan) dan lokasi GPS pengguna untuk memberikan rekomendasi aksi sosial ringan terdekat (seperti memberi makan kucing liar, melariskan pedagang sepi, dll).
 
-## Get started
+---
 
-1. Install dependencies
+## 🛠️ Tech Stack
 
+- **Framework**: React Native (Expo SDK 56) dengan Expo Router
+- **Database & Auth**: Supabase (PostgreSQL)
+- **Real-time Engine**: Supabase Real-time Subscriptions (untuk notifikasi asisten)
+- **Fitur Native**:
+  - `expo-location` (GPS & Lokasi terintegrasi)
+  - `react-native-maps` (Peta Peka / Navigasi Aksi)
+  - `expo-image-picker` & Kamera Simulasi (Foto bukti aksi kebaikan)
+  - `expo-notifications` (Notifikasi push lokal ketika ada misi baru)
+- **Penyimpanan Lokal**: `@react-native-async-storage/async-storage` (sebagai fallback Demo Mode)
+
+---
+
+## 🚀 Cara Menjalankan Aplikasi
+
+1. **Clone & Install Dependensi**:
+   Buka terminal di folder proyek ini, lalu jalankan:
    ```bash
    npm install
    ```
 
-2. Start the app
-
+2. **Jalankan Aplikasi**:
+   Jalankan server Expo:
    ```bash
-   npx expo start
+   npm start
    ```
+   Pindai QR Code menggunakan aplikasi **Expo Go** di perangkat Android atau iOS Anda.
 
-In the output, you'll find options to open the app in a
+---
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## 🔗 Cara Menghubungkan ke Supabase
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+Untuk menghubungkan database online Supabase ke aplikasi BeKind Anda, ikuti langkah-langkah berikut:
 
-## Get a fresh project
+### Langkah 1: Siapkan Proyek Supabase
+1. Masuk ke [Supabase Dashboard](https://supabase.com) dan buat proyek baru (*Create a new project*).
+2. Tunggu hingga database selesai di-setup oleh Supabase.
 
-When you're ready, run:
+### Langkah 2: Setup Tabel Database (SQL Editor)
+1. Di dashboard Supabase proyek Anda, klik menu **SQL Editor** di panel kiri.
+2. Klik **New Query** -> **Blank Query**.
+3. Buka file [supabase_schema.sql](supabase_schema.sql) di folder proyek ini, salin seluruh isi teks SQL-nya, dan tempel (*paste*) ke SQL Editor di Supabase.
+4. Klik tombol **Run** di pojok kanan bawah.
+   *Ini akan membuat tabel `profiles`, `schedules`, `missions`, `suggestions`, `completed_missions`, mengonfigurasi RLS (Row Level Security), dan memasukkan data misi awal.*
 
-```bash
-npm run reset-project
+### Langkah 3: Konfigurasi Environment Variables di Aplikasi
+1. Di folder utama proyek ini, buat berkas baru dengan nama `.env`.
+2. Salin isi dari berkas [.env.example](.env.example) ke berkas `.env` tersebut.
+3. Di dashboard Supabase Anda, buka **Project Settings** (ikon gerigi di kiri bawah) -> **API**.
+4. Salin **Project URL** dan tempelkan ke variabel `EXPO_PUBLIC_SUPABASE_URL` di berkas `.env`.
+5. Salin **anon / public API key** dan tempelkan ke variabel `EXPO_PUBLIC_SUPABASE_ANON_KEY` di berkas `.env`.
+
+Contoh isi berkas `.env` Anda:
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://abcde12345.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ey...
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+### Langkah 4: Restart Server Expo
+Matikan server Expo jika sedang berjalan (`Ctrl + C` di terminal) lalu jalankan kembali menggunakan `npm start`. Aplikasi sekarang sudah terhubung langsung secara real-time ke Supabase!
 
-### Other setup steps
-
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+> [!NOTE]
+> **Demo Mode / Fallback**: Jika file `.env` tidak dibuat atau kredensial kosong, aplikasi akan secara otomatis masuk ke **Demo Mode**. Aplikasi akan berjalan menggunakan data lokal (`AsyncStorage`) dan mensimulasikan semua interaksi otonom/kamera secara offline agar presentasi/uji coba UI tetap dapat dilakukan secara instan tanpa hambatan.
