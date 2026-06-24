@@ -43,13 +43,27 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
         if (locStatus === 'granted') {
           setLocationPermission(true);
-          const loc = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
-          setCurrentLocation({
-            latitude: loc.coords.latitude,
-            longitude: loc.coords.longitude,
-          });
+          try {
+            const loc = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
+            setCurrentLocation({
+              latitude: loc.coords.latitude,
+              longitude: loc.coords.longitude,
+            });
+          } catch (locErr) {
+            console.log('getCurrentPositionAsync gagal (mungkin GPS mati), mencoba getLastKnownPositionAsync...');
+            const lastLoc = await Location.getLastKnownPositionAsync();
+            if (lastLoc) {
+              setCurrentLocation({
+                latitude: lastLoc.coords.latitude,
+                longitude: lastLoc.coords.longitude,
+              });
+            } else {
+              console.log('Tidak ada lokasi terakhir yang diketahui, menggunakan koordinat default (Bandung)');
+              setCurrentLocation(MOCK_COORDS);
+            }
+          }
         } else {
           // Fallback ke Gedung Sate jika tidak diberi izin
           setCurrentLocation(MOCK_COORDS);

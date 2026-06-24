@@ -1,7 +1,10 @@
 import { Tabs } from 'expo-router';
-import { useColorScheme, View, StyleSheet, Platform } from 'react-native';
+import { useColorScheme, View, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useState, useEffect } from 'react';
 import { AgentProvider } from '@/context/AgentContext';
+import { supabase, isDemoMode } from '@/services/database';
+import { AuthScreen } from '@/components/AuthScreen';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -13,6 +16,42 @@ export default function RootLayout() {
   const backgroundColor = '#0F172A'; // Slate 900
   const activeColor = '#06B6D4';
   const inactiveColor = '#94A3B8';
+
+  const [session, setSession] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(!isDemoMode);
+
+  useEffect(() => {
+    if (isDemoMode) return;
+
+    // Ambil session saat ini
+    supabase!.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    // Dengarkan perubahan auth
+    const { data: { subscription } } = supabase!.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  if (authLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#06B6D4" />
+      </View>
+    );
+  }
+
+  // Jika tidak di demo mode dan tidak terautentikasi, tampilkan halaman Login/Register
+  if (!isDemoMode && !session) {
+    return <AuthScreen />;
+  }
 
   return (
     <AgentProvider>
