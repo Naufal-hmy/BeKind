@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { AuthScreen } from '@/components/AuthScreen';
 import { AgentProvider } from '@/context/AgentContext';
 import { isDemoMode, supabase } from '@/services/database';
@@ -6,6 +7,16 @@ import * as NavigationBar from 'expo-navigation-bar';
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, LogBox, Platform, StatusBar, useColorScheme, View } from 'react-native';
+=======
+import { Stack } from 'expo-router';
+import { useColorScheme, View, StyleSheet, Platform, ActivityIndicator, LogBox, StatusBar } from 'react-native';
+import { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as NavigationBar from 'expo-navigation-bar';
+import { AgentProvider } from '@/context/AgentContext';
+import { supabase, isDemoMode } from '@/services/database';
+import { AuthScreen } from '@/components/AuthScreen';
+>>>>>>> 30fc53d1095abe0e6781ec7cdf9bbf2e8c2afaf6
 
 LogBox.ignoreLogs([
   'expo-notifications: Android Push notifications',
@@ -67,7 +78,11 @@ export default function RootLayout() {
 
   if (authLoading) {
     return (
+<<<<<<< HEAD
       <View style={{ flex: 1, backgroundColor: '#22335a', justifyContent: 'center', alignItems: 'center' }}>
+=======
+      <View style={{ flex: 1, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center' }}>
+>>>>>>> 30fc53d1095abe0e6781ec7cdf9bbf2e8c2afaf6
         <ActivityIndicator size="large" color="#06B6D4" />
       </View>
     );
