@@ -61,9 +61,12 @@ CREATE TABLE IF NOT EXISTS public.missions (
 -- Enable RLS for Missions
 ALTER TABLE public.missions ENABLE ROW LEVEL SECURITY;
 
--- Create Missions Policies (Read-only for all, write for admin/system)
+-- Create Missions Policies (Read-only for all, write for authenticated users)
 CREATE POLICY "Allow public read missions" ON public.missions
   FOR SELECT USING (true);
+
+CREATE POLICY "Allow authenticated manage missions" ON public.missions
+  FOR ALL TO authenticated USING (true);
 
 -- Seed Initial Missions Data
 INSERT INTO public.missions (title, description, category, latitude, longitude, aura_points, location_name)

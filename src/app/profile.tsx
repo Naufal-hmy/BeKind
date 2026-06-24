@@ -11,6 +11,7 @@ import {
   Platform,
   ActivityIndicator,
   FlatList,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -49,6 +50,19 @@ export default function ProfileScreen() {
   const [showCameraView, setShowCameraView] = useState(false);
   const [cameraGridMode, setCameraGridMode] = useState(true);
 
+  // States untuk Admin Panel CRUD
+  const [adminMissions, setAdminMissions] = useState<any[]>([]);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [editingMission, setEditingMission] = useState<any | null>(null);
+
+  const [formTitle, setFormTitle] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formCategory, setFormCategory] = useState('Sosial');
+  const [formLatitude, setFormLatitude] = useState('-6.9024');
+  const [formLongitude, setFormLongitude] = useState('107.6186');
+  const [formAuraPoints, setFormAuraPoints] = useState('50');
+  const [formLocationName, setFormLocationName] = useState('');
+
   // Muat data profil & riwayat misi
   const loadData = async () => {
     try {
@@ -56,6 +70,9 @@ export default function ProfileScreen() {
       setProfile(prof);
       const list = await dbService.getCompletedMissions();
       setHistory(list);
+      
+      const missionsList = await dbService.getMissions();
+      setAdminMissions(missionsList);
     } catch (e) {
       console.error(e);
     }
@@ -145,6 +162,178 @@ export default function ProfileScreen() {
     }
   };
 
+  // Render Panel Admin (CRUD Misi)
+  const renderAdminPanel = () => {
+    const handleOpenForm = (mission: any | null) => {
+      if (mission) {
+        setEditingMission(mission);
+        setFormTitle(mission.title);
+        setFormDescription(mission.description);
+        setFormCategory(mission.category);
+        setFormLatitude(mission.latitude.toString());
+        setFormLongitude(mission.longitude.toString());
+        setFormAuraPoints(mission.aura_points.toString());
+        setFormLocationName(mission.location_name);
+      } else {
+        setEditingMission({});
+        setFormTitle('');
+        setFormDescription('');
+        setFormCategory('Sosial');
+        setFormLatitude('-6.9024');
+        setFormLongitude('107.6186');
+        setFormAuraPoints('50');
+        setFormLocationName('');
+      }
+    };
+
+    const handleSave = async () => {
+      if (!formTitle || !formDescription || !formLocationName) {
+        Alert.alert('Error', 'Harap isi semua kolom wajib!');
+        return;
+      }
+      const lat = parseFloat(formLatitude) || -6.9024;
+      const lon = parseFloat(formLongitude) || 107.6186;
+      const pts = parseInt(formAuraPoints) || 50;
+
+      try {
+        if (editingMission && editingMission.id) {
+          // Update
+          await dbService.updateMission(editingMission.id, formTitle, formDescription, formCategory, lat, lon, pts, formLocationName);
+          Alert.alert('Sukses', 'Misi berhasil diperbarui!');
+        } else {
+          // Add
+          await dbService.addMission(formTitle, formDescription, formCategory, lat, lon, pts, formLocationName);
+          Alert.alert('Sukses', 'Misi baru berhasil ditambahkan!');
+        }
+        setEditingMission(null);
+        loadData();
+      } catch (err: any) {
+        Alert.alert('Gagal', err.message || 'Gagal menyimpan misi');
+      }
+    };
+
+    const handleDelete = async (id: string) => {
+      Alert.alert(
+        'Hapus Misi',
+        'Apakah kamu yakin ingin menghapus misi ini rill?',
+        [
+          { text: 'Batal', style: 'cancel' },
+          {
+            text: 'Hapus',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await dbService.deleteMission(id);
+                Alert.alert('Sukses', 'Misi berhasil dihapus');
+                loadData();
+              } catch (err: any) {
+                Alert.alert('Gagal', err.message || 'Gagal menghapus misi');
+              }
+            }
+          }
+        ]
+      );
+    };
+
+    return (
+      <View style={styles.adminOverlay}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <View style={styles.adminHeader}>
+            <TouchableOpacity onPress={() => { setEditingMission(null); setShowAdminPanel(false); }}>
+              <Ionicons name="arrow-back" size={24} color="#F8FAFC" />
+            </TouchableOpacity>
+            <Text style={styles.adminTitle}>Panel Admin BeKind</Text>
+            {editingMission === null && (
+              <TouchableOpacity onPress={() => handleOpenForm(null)} style={styles.adminAddBtn}>
+                <Ionicons name="add" size={20} color="#0F172A" />
+                <Text style={styles.adminAddText}>Misi</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {editingMission !== null ? (
+            // Edit/Add Form Screen
+            <ScrollView contentContainerStyle={styles.formContainer} keyboardShouldPersistTaps="handled">
+              <Text style={styles.formSectionTitle}>
+                {editingMission.id ? 'Edit Misi Kebaikan' : 'Tambah Misi Kebaikan Baru'}
+              </Text>
+
+              <Text style={styles.formLabel}>Judul Misi</Text>
+              <TextInput style={styles.formInput} value={formTitle} onChangeText={setFormTitle} placeholder="Contoh: Sapu Halaman Masjid" placeholderTextColor="#64748B" />
+
+              <Text style={styles.formLabel}>Deskripsi Lengkap</Text>
+              <TextInput style={[styles.formInput, { height: 80, textAlignVertical: 'top' }]} multiline value={formDescription} onChangeText={setFormDescription} placeholder="Jelaskan aksi kebaikan yang harus dilakukan..." placeholderTextColor="#64748B" />
+
+              <Text style={styles.formLabel}>Kategori</Text>
+              <View style={styles.categorySelector}>
+                {['Hewan', 'Sosial', 'Kemanusiaan', 'Lingkungan'].map((cat) => (
+                  <TouchableOpacity key={cat} style={[styles.categoryBtn, formCategory === cat && styles.categoryBtnActive]} onPress={() => setFormCategory(cat)}>
+                    <Text style={[styles.categoryBtnText, formCategory === cat && styles.categoryBtnTextActive]}>{cat}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.formLabel}>Nama Lokasi</Text>
+              <TextInput style={styles.formInput} value={formLocationName} onChangeText={setFormLocationName} placeholder="Contoh: Jl. Diponegoro (Depan Puskesmas)" placeholderTextColor="#64748B" />
+
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.formLabel}>Latitude</Text>
+                  <TextInput style={styles.formInput} keyboardType="numeric" value={formLatitude} onChangeText={setFormLatitude} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.formLabel}>Longitude</Text>
+                  <TextInput style={styles.formInput} keyboardType="numeric" value={formLongitude} onChangeText={setFormLongitude} />
+                </View>
+              </View>
+
+              <Text style={styles.formLabel}>Aura Points</Text>
+              <TextInput style={styles.formInput} keyboardType="numeric" value={formAuraPoints} onChangeText={setFormAuraPoints} />
+
+              <View style={styles.formActionButtons}>
+                <TouchableOpacity style={styles.formSaveBtn} onPress={handleSave}>
+                  <Text style={styles.formSaveText}>Simpan Misi</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.formCancelBtn} onPress={() => setEditingMission(null)}>
+                  <Text style={styles.formCancelText}>Kembali</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          ) : (
+            // Missions List Screen
+            <FlatList
+              data={adminMissions}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ padding: 20 }}
+              renderItem={({ item }) => (
+                <View style={styles.adminMissionCard}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.adminCardTitle}>{item.title}</Text>
+                    <Text style={styles.adminCardCategory}>{item.category} • +{item.aura_points} Aura</Text>
+                    <Text style={styles.adminCardLocation}><Ionicons name="pin" size={12} color="#94A3B8" /> {item.location_name}</Text>
+                  </View>
+                  <View style={styles.adminCardActions}>
+                    <TouchableOpacity onPress={() => handleOpenForm(item)} style={styles.adminEditBtn}>
+                      <Ionicons name="pencil" size={16} color="#06B6D4" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.adminDeleteBtn}>
+                      <Ionicons name="trash" size={16} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              ListEmptyComponent={
+                <View style={{ alignItems: 'center', marginTop: 40 }}>
+                  <Text style={{ color: '#94A3B8' }}>Belum ada misi terdaftar.</Text>
+                </View>
+              }
+            />
+          )}
+        </SafeAreaView>
+      </View>
+    );
+  };
+
   // Render Layar Kamera Simulasi (Cyberpunk Viewfinder)
   const renderMockCameraView = () => {
     if (!activeSuggestion || !activeSuggestion.mission) return null;
@@ -220,6 +409,9 @@ export default function ProfileScreen() {
       {/* Jika view camera aktif, render full overlay */}
       {showCameraView && renderMockCameraView()}
 
+      {/* Jika panel admin aktif, render full overlay */}
+      {showAdminPanel && renderAdminPanel()}
+
       {/* Background neon glow */}
       <View style={styles.glowViolet} />
 
@@ -247,6 +439,15 @@ export default function ProfileScreen() {
             <Text style={styles.auraScoreLbl}>Aura Points</Text>
           </View>
         </View>
+
+        {/* Tombol Kelola Misi (Admin Panel) */}
+        <TouchableOpacity 
+          style={styles.adminPanelBtn} 
+          onPress={() => setShowAdminPanel(true)}
+        >
+          <Ionicons name="settings-outline" size={18} color="#06B6D4" />
+          <Text style={styles.adminPanelBtnText}>Panel Kelola Misi (Admin CRUD)</Text>
+        </TouchableOpacity>
 
         {/* Active Mission Action (Klaim Bukti) */}
         {activeSuggestion && activeSuggestion.status === 'accepted' && (
@@ -815,5 +1016,195 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: 27,
     backgroundColor: '#06B6D4',
+  },
+  adminPanelBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.3)',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignSelf: 'center',
+    marginTop: 5,
+    marginBottom: 20,
+    gap: 8,
+  },
+  adminPanelBtnText: {
+    color: '#22D3EE',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  adminOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0F172A',
+    zIndex: 2000,
+  },
+  adminHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderColor: '#1E293B',
+    backgroundColor: '#0F172A',
+  },
+  adminTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#F8FAFC',
+  },
+  adminAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#22D3EE',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 2,
+  },
+  adminAddText: {
+    color: '#0F172A',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  adminMissionCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  adminCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#F8FAFC',
+    marginBottom: 4,
+  },
+  adminCardCategory: {
+    fontSize: 12,
+    color: '#8B5CF6',
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  adminCardLocation: {
+    fontSize: 12,
+    color: '#94A3B8',
+  },
+  adminCardActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  adminEditBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(6, 182, 212, 0.3)',
+  },
+  adminDeleteBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  formContainer: {
+    padding: 20,
+  },
+  formSectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#F8FAFC',
+    marginBottom: 20,
+  },
+  formLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#94A3B8',
+    marginBottom: 6,
+  },
+  formInput: {
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 48,
+    color: '#F8FAFC',
+    fontSize: 14,
+    marginBottom: 16,
+  },
+  categorySelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  categoryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  categoryBtnActive: {
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    borderColor: '#8B5CF6',
+  },
+  categoryBtnText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontWeight: '600',
+  },
+  categoryBtnTextActive: {
+    color: '#C084FC',
+  },
+  formActionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+    marginBottom: 30,
+  },
+  formSaveBtn: {
+    flex: 1,
+    height: 48,
+    backgroundColor: '#06B6D4',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  formSaveText: {
+    color: '#0F172A',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  formCancelBtn: {
+    flex: 1,
+    height: 48,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  formCancelText: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '700',
   },
 });
