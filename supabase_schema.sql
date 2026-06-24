@@ -154,3 +154,9 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Alter tables to add new required columns
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';
+ALTER TABLE public.schedules ADD COLUMN IF NOT EXISTS date TEXT DEFAULT NULL;
+ALTER TABLE public.schedules ADD COLUMN IF NOT EXISTS frequency TEXT DEFAULT 'once';
+ALTER TABLE public.schedules ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'busy';

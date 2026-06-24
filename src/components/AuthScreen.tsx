@@ -11,11 +11,13 @@ import {
   ScrollView,
   SafeAreaView,
   StatusBar,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase } from '@/services/database';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase, isDemoMode } from '@/services/database';
 
-export function AuthScreen() {
+export function AuthScreen({ onLoginSuccess }: { onLoginSuccess?: (sess: any) => void }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,34 +41,166 @@ export function AuthScreen() {
     setErrorMsg('');
     setSuccessMsg('');
 
+    const checkEmail = email.toLowerCase().trim();
+    const isSystemAdmin = (checkEmail === 'admin' || checkEmail === 'admin@gmail.com') && password === 'admin';
+
     try {
-      if (isSignUp) {
-        // Sign Up
-        const { data, error } = await supabase!.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              name: name,
-              username: username,
-            },
-          },
-        });
-        if (error) throw error;
-        
-        // Supabase biasanya mengirim email konfirmasi, beri tahu user
-        if (data.session === null) {
-          setSuccessMsg('Pendaftaran berhasil! Silakan cek email kamu untuk konfirmasi akun.');
+      if (isDemoMode) {
+        // --- DEMO / OFFLINE AUTH MODE ---
+        if (isSignUp) {
+          // Sign Up
+          const usersStr = await AsyncStorage.getItem('@registered_users');
+          const users = usersStr ? JSON.parse(usersStr) : [];
+          
+          if (users.some((u: any) => u.email.toLowerCase() === email.toLowerCase())) {
+            throw new Error('Email sudah terdaftar rill');
+          }
+          if (checkEmail === 'admin') {
+            throw new Error('Username admin diproteksi sistem');
+          }
+
+          const newUser = { email, password, name, username, role: 'user' };
+          users.push(newUser);
+          await AsyncStorage.setItem('@registered_users', JSON.stringify(users));
+
+          // Inisialisasi Profile baru di local storage
+          const profileKey = `@profile_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+          const userProfile = {
+            name,
+            username,
+            role: 'user',
+            email,
+            aura_points: 150,
+            level: 'Peka-Beginner',
+            avatar_url: `https://api.dicebear.com/7.x/pixel-art/png?seed=${username}`,
+          };
+          await AsyncStorage.setItem(profileKey, JSON.stringify(userProfile));
+
+          await AsyncStorage.setItem('@demo_session', email);
+          if (onLoginSuccess) {
+            onLoginSuccess({ user: { email } });
+          }
         } else {
-          setSuccessMsg('Pendaftaran berhasil! Kamu otomatis masuk.');
+          // Sign In
+          if (isSystemAdmin) {
+            // Admin default login
+            await AsyncStorage.setItem('@demo_session', 'admin');
+            
+            // Buat profil admin jika belum ada
+            const adminProfile = {
+              name: 'Admin BeKind',
+              username: 'admin',
+              role: 'admin',
+              email: 'admin@gmail.com',
+              aura_points: 999,
+              level: 'Kaisar Empati',
+              avatar_url: 'https://api.dicebear.com/7.x/pixel-art/png?seed=admin',
+            };
+            await AsyncStorage.setItem('@profile_admin', JSON.stringify(adminProfile));
+
+            if (onLoginSuccess) {
+              onLoginSuccess({ user: { email: 'admin' } });
+            }
+          } else {
+            // User login
+            const usersStr = await AsyncStorage.getItem('@registered_users');
+            const users = usersStr ? JSON.parse(usersStr) : [];
+            const user = users.find(
+              (u: any) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
+            );
+
+            if (user) {
+              await AsyncStorage.setItem('@demo_session', email);
+              if (onLoginSuccess) {
+                onLoginSuccess({ user: { email } });
+              }
+            } else {
+              throw new Error('Email/password salah atau coba login as admin (admin/admin)');
+            }
+          }
         }
       } else {
-        // Sign In
-        const { error } = await supabase!.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
+        // --- ONLINE SUPABASE MODE ---
+        const targetEmail = isSystemAdmin ? 'admin@gmail.com' : email;
+        const targetPassword = isSystemAdmin ? 'admin' : password;
+
+        if (isSignUp) {
+          const { data, error } = await supabase!.auth.signUp({
+            email: targetEmail,
+            password: targetPassword,
+            options: {
+              data: {
+                name: name,
+                username: username,
+              },
+            },
+          });
+          if (error) throw error;
+          
+          if (data.session === null) {
+            setSuccessMsg('Pendaftaran berhasil! Silakan cek email kamu untuk konfirmasi akun.');
+          } else {
+            setSuccessMsg('Pendaftaran berhasil! Kamu otomatis masuk.');
+            if (onLoginSuccess) onLoginSuccess(data.session);
+          }
+        } else {
+          // Sign In
+          let sessionData: any = null;
+          try {
+            const { data, error } = await supabase!.auth.signInWithPassword({
+              email: targetEmail,
+              password: targetPassword,
+            });
+            
+            if (error) {
+              // Jika login admin gagal karena belum terdaftar, daftarkan otomatis
+              if (isSystemAdmin && (
+                error.message.includes('Invalid login credentials') || 
+                error.message.includes('User not found') ||
+                error.status === 400
+              )) {
+                const signUpRes = await supabase!.auth.signUp({
+                  email: 'admin@gmail.com',
+                  password: 'admin',
+                  options: {
+                    data: {
+                      name: 'Admin BeKind',
+                      username: 'admin',
+                    },
+                  },
+                });
+                if (signUpRes.error) throw signUpRes.error;
+                
+                if (signUpRes.data.session) {
+                  sessionData = signUpRes.data.session;
+                } else {
+                  throw new Error('Admin baru berhasil didaftarkan di Supabase. Silakan coba masuk sekali lagi!');
+                }
+              } else {
+                throw error;
+              }
+            } else {
+              sessionData = data.session;
+            }
+          } catch (signInErr: any) {
+            throw signInErr;
+          }
+
+          if (sessionData) {
+            // Set role admin di Supabase profiles table jika admin
+            if (isSystemAdmin) {
+              try {
+                await supabase!
+                  .from('profiles')
+                  .update({ role: 'admin', aura_points: 999, level: 'Kaisar Empati' })
+                  .eq('id', sessionData.user.id);
+              } catch (updateErr) {
+                console.error('Gagal mengupdate role admin:', updateErr);
+              }
+            }
+            if (onLoginSuccess) onLoginSuccess(sessionData);
+          }
+        }
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Terjadi kesalahan sistem');
@@ -214,7 +348,6 @@ const styles = StyleSheet.create({
     borderRadius: 150,
     backgroundColor: '#06B6D4',
     opacity: 0.15,
-    blurRadius: 100,
   },
   glowViolet: {
     position: 'absolute',
@@ -225,7 +358,6 @@ const styles = StyleSheet.create({
     borderRadius: 150,
     backgroundColor: '#8B5CF6',
     opacity: 0.15,
-    blurRadius: 100,
   },
   header: {
     alignItems: 'center',

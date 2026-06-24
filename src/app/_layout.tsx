@@ -3,6 +3,8 @@ import { useColorScheme, View, StyleSheet, Platform, ActivityIndicator, LogBox, 
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as NavigationBar from 'expo-navigation-bar';
 import { AgentProvider } from '@/context/AgentContext';
 import { supabase, isDemoMode } from '@/services/database';
 import { AuthScreen } from '@/components/AuthScreen';
@@ -14,7 +16,6 @@ LogBox.ignoreLogs([
   'Route "./explore.tsx" is missing',
   'Too many screens defined',
 ]);
-
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -37,14 +38,35 @@ export default function RootLayout() {
   const inactiveColor = '#94A3B8';
 
   const [session, setSession] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(!isDemoMode);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Sesuaikan tinggi tab bar secara dinamis sesuai insets bottom (Android nav bar / iOS home bar)
   const tabBarHeight = Platform.OS === 'web' ? 65 : 65 + insets.bottom;
   const tabBarPaddingBottom = Platform.OS === 'web' ? 10 : 10 + insets.bottom;
 
   useEffect(() => {
-    if (isDemoMode) return;
+    // Set Android Bottom Navigation Bar Color
+    if (Platform.OS === 'android') {
+      const navBar = NavigationBar as any;
+      if (typeof navBar.setBackgroundColorAsync === 'function') {
+        navBar.setBackgroundColorAsync('#0F172A').catch((err: any) => console.log('NavBar error:', err));
+      }
+      if (typeof navBar.setButtonStyleAsync === 'function') {
+        navBar.setButtonStyleAsync('light').catch((err: any) => console.log('NavBar button error:', err));
+      }
+    }
+
+    if (isDemoMode) {
+      AsyncStorage.getItem('@demo_session').then((demoSess) => {
+        if (demoSess) {
+          setSession({ user: { email: demoSess } });
+        } else {
+          setSession(null);
+        }
+        setAuthLoading(false);
+      });
+      return;
+    }
 
     // Ambil session saat ini
     supabase!.auth.getSession().then(({ data: { session } }) => {
@@ -71,9 +93,9 @@ export default function RootLayout() {
     );
   }
 
-  // Jika tidak di demo mode dan tidak terautentikasi, tampilkan halaman Login/Register
-  if (!isDemoMode && !session) {
-    return <AuthScreen />;
+  // Jika tidak terautentikasi (baik Supabase maupun Demo Mode), tampilkan halaman Login/Register
+  if (!session) {
+    return <AuthScreen onLoginSuccess={(sess: any) => setSession(sess)} />;
   }
 
   return (
@@ -118,6 +140,15 @@ export default function RootLayout() {
             title: 'Peta Peka',
             tabBarIcon: ({ color, focused }) => (
               <Ionicons name={focused ? 'map' : 'map-outline'} size={24} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="leaderboard"
+          options={{
+            title: 'Papan Peringkat',
+            tabBarIcon: ({ color, focused }) => (
+              <Ionicons name={focused ? 'trophy' : 'trophy-outline'} size={24} color={color} />
             ),
           }}
         />

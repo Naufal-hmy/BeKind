@@ -13,6 +13,7 @@ import {
   FlatList,
   TextInput,
   StatusBar,
+  DevSettings,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -89,6 +90,54 @@ export default function ProfileScreen() {
   const [verificationTab, setVerificationTab] = useState<'public' | 'event'>('public');
   const [disputingCompletion, setDisputingCompletion] = useState<any | null>(null);
   const [disputeReason, setDisputeReason] = useState('');
+
+  // States Edit Profil
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editUsername, setEditUsername] = useState('');
+
+  const handleOpenEditProfile = () => {
+    setEditName(profile.name || '');
+    setEditUsername(profile.username || '');
+    setShowEditProfileModal(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim() || !editUsername.trim()) {
+      Alert.alert('Eits', 'Nama dan username wajib diisi, cuy!');
+      return;
+    }
+    try {
+      const updated = await dbService.updateProfileInfo(editName, editUsername);
+      setProfile(updated);
+      setShowEditProfileModal(false);
+      Alert.alert('Mantap', 'Profil berhasil diperbarui.');
+    } catch (err: any) {
+      Alert.alert('Gagal', err.message || 'Gagal memperbarui profil.');
+    }
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Keluar Akun?',
+      'Yakin mau keluar dari BeKind, cuy?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Keluar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dbService.signOut();
+              DevSettings.reload();
+            } catch (err) {
+              console.error(err);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // Muat data profil & riwayat misi
   const loadData = async () => {
@@ -663,45 +712,54 @@ export default function ProfileScreen() {
       {/* Jika panel admin aktif, render full overlay */}
       {showAdminPanel && renderAdminPanel()}
 
-      {/* Modal Hadiah Leaderboard */}
-      {showRewardsModal && (
+      {/* Modal Edit Profil */}
+      {showEditProfileModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>🏆 HADIAH BULANAN TOP 10</Text>
-              <TouchableOpacity onPress={() => setShowRewardsModal(false)}>
+              <Text style={styles.modalTitle}>✏️ EDIT PROFIL</Text>
+              <TouchableOpacity onPress={() => setShowEditProfileModal(false)}>
                 <Ionicons name="close" size={24} color="#FFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.rewardIntro}>
-                Jadilah agen kebaikan paling aktif bulan ini dan dapatkan saldo e-wallet!
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={styles.disputeIntro}>
+                Sesuaikan nama lengkap dan username unik kamu di sini. Alamat email tidak dapat diubah karena terikat akun otentikasi.
               </Text>
-              <View style={styles.rewardList}>
-                <View style={styles.rewardItem}>
-                  <Text style={styles.rewardRank}>🥇 Juara 1</Text>
-                  <Text style={styles.rewardGift}>ShopeePay / Gopay Rp500.000</Text>
-                  <Text style={styles.rewardBadge}>+ Golden Profile Border</Text>
-                </View>
-                <View style={styles.rewardItem}>
-                  <Text style={styles.rewardRank}>🥈 Juara 2</Text>
-                  <Text style={styles.rewardGift}>ShopeePay / Gopay Rp300.000</Text>
-                  <Text style={styles.rewardBadge}>+ Silver Profile Border</Text>
-                </View>
-                <View style={styles.rewardItem}>
-                  <Text style={styles.rewardRank}>🥉 Juara 3</Text>
-                  <Text style={styles.rewardGift}>ShopeePay / Gopay Rp200.000</Text>
-                  <Text style={styles.rewardBadge}>+ Bronze Profile Border</Text>
-                </View>
-                <View style={styles.rewardItem}>
-                  <Text style={styles.rewardRank}>⭐ Peringkat 4 - 10</Text>
-                  <Text style={styles.rewardGift}>ShopeePay / Gopay Rp50.000</Text>
-                  <Text style={styles.rewardBadge}>Apresiasi Kontributor</Text>
-                </View>
-              </View>
-              <Text style={styles.rewardDisclaimer}>
-                Pemenang diumumkan setiap tanggal 1 awal bulan berdasarkan perolehan Aura Points. Poin bulanan akan di-reset setelah periode selesai.
-              </Text>
+
+              <Text style={styles.formLabel}>Nama Lengkap</Text>
+              <TextInput
+                style={styles.formInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Nama Lengkap"
+                placeholderTextColor="#64748B"
+              />
+
+              <Text style={styles.formLabel}>Username</Text>
+              <TextInput
+                style={styles.formInput}
+                value={editUsername}
+                onChangeText={setEditUsername}
+                placeholder="Username"
+                placeholderTextColor="#64748B"
+                autoCapitalize="none"
+              />
+
+              <Text style={styles.formLabel}>Email (Terkunci)</Text>
+              <TextInput
+                style={[styles.formInput, { opacity: 0.5, backgroundColor: 'rgba(0,0,0,0.2)' }]}
+                value={profile.email}
+                editable={false}
+                placeholderTextColor="#64748B"
+              />
+
+              <TouchableOpacity 
+                style={styles.editProfileSubmitBtn} 
+                onPress={handleSaveProfile}
+              >
+                <Text style={styles.editProfileSubmitText}>Simpan Perubahan</Text>
+              </TouchableOpacity>
             </ScrollView>
           </View>
         </View>
@@ -1048,33 +1106,47 @@ export default function ProfileScreen() {
 
         {/* Action Panel Group */}
         <View style={styles.actionPanelRow}>
-          <TouchableOpacity 
-            style={[styles.actionBtnCard, { borderColor: '#06B6D4' }]} 
-            onPress={() => setShowCreateMissionModal(true)}
-          >
-            <Ionicons name="add-circle-outline" size={24} color="#06B6D4" />
-            <Text style={styles.actionBtnText}>Buat Misi</Text>
-          </TouchableOpacity>
+          {profile.role !== 'admin' && (
+            <TouchableOpacity 
+              style={[styles.actionBtnCard, { borderColor: '#06B6D4' }]} 
+              onPress={() => setShowCreateMissionModal(true)}
+            >
+              <Ionicons name="add-circle-outline" size={24} color="#06B6D4" />
+              <Text style={styles.actionBtnText}>Buat Misi</Text>
+            </TouchableOpacity>
+          )}
+
+          {profile.role === 'admin' && (
+            <>
+              <TouchableOpacity 
+                style={[styles.actionBtnCard, { borderColor: '#8B5CF6' }]} 
+                onPress={() => setShowAdminPanel(true)}
+              >
+                <Ionicons name="settings-outline" size={24} color="#8B5CF6" />
+                <Text style={styles.actionBtnText}>CRUD Misi</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.actionBtnCard, { borderColor: '#FACC15' }]} 
+                onPress={() => setShowEOAdminPanel(true)}
+              >
+                <Ionicons name="checkbox-outline" size={24} color="#FACC15" />
+                {pendingVerifications.length > 0 && (
+                  <View style={styles.badgeCount}>
+                    <Text style={styles.badgeText}>{pendingVerifications.length}</Text>
+                  </View>
+                )}
+                <Text style={styles.actionBtnText}>Verifikasi</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           <TouchableOpacity 
-            style={[styles.actionBtnCard, { borderColor: '#8B5CF6' }]} 
-            onPress={() => setShowAdminPanel(true)}
+            style={[styles.actionBtnCard, { borderColor: '#EC4899' }]} 
+            onPress={handleOpenEditProfile}
           >
-            <Ionicons name="settings-outline" size={24} color="#8B5CF6" />
-            <Text style={styles.actionBtnText}>CRUD Misi</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.actionBtnCard, { borderColor: '#FACC15' }]} 
-            onPress={() => setShowEOAdminPanel(true)}
-          >
-            <Ionicons name="checkbox-outline" size={24} color="#FACC15" />
-            {pendingVerifications.length > 0 && (
-              <View style={styles.badgeCount}>
-                <Text style={styles.badgeText}>{pendingVerifications.length}</Text>
-              </View>
-            )}
-            <Text style={styles.actionBtnText}>Verifikasi</Text>
+            <Ionicons name="create-outline" size={24} color="#EC4899" />
+            <Text style={styles.actionBtnText}>Edit Profil</Text>
           </TouchableOpacity>
         </View>
 
@@ -1104,57 +1176,6 @@ export default function ProfileScreen() {
             </View>
           </View>
         )}
-
-        {/* Gamifikasi: Leaderboard / Papan Peringkat */}
-        <View style={styles.leaderboardHeaderRow}>
-          <Text style={styles.sectionTitle}>Peka-Leaderboard (Top 10 Bulanan)</Text>
-          <TouchableOpacity 
-            style={styles.rewardsInfoBtn}
-            onPress={() => setShowRewardsModal(true)}
-          >
-            <Ionicons name="gift-outline" size={14} color="#FACC15" />
-            <Text style={styles.rewardsInfoBtnText}>Hadiah</Text>
-          </TouchableOpacity>
-        </View>
-        
-        <View style={styles.countdownContainer}>
-          <Ionicons name="time-outline" size={14} color="#94A3B8" />
-          <Text style={styles.countdownText}>Berakhir dalam: {countdown}</Text>
-        </View>
-
-        <View style={styles.leaderboardCard}>
-          {leaderboard.map((item, index) => {
-            const isUser = item.name.includes('You') || item.name.includes('Lu');
-            return (
-              <View 
-                key={index} 
-                style={[
-                  styles.leaderboardItem,
-                  isUser && styles.leaderboardItemUser,
-                  index === leaderboard.length - 1 && { borderBottomWidth: 0 }
-                ]}
-              >
-                <View style={styles.leadLeft}>
-                  <Text style={[
-                    styles.rankNum,
-                    item.rank === 1 && { color: '#FACC15' },
-                    item.rank === 2 && { color: '#E2E8F0' },
-                    item.rank === 3 && { color: '#CD7F32' },
-                  ]}>
-                    #{item.rank}
-                  </Text>
-                  <Text style={[styles.leadName, isUser && { fontWeight: '800', color: '#06B6D4' }]}>
-                    {item.name}
-                  </Text>
-                </View>
-                
-                <View style={styles.leadRight}>
-                  <Text style={styles.leadPoints}>+{item.points} Aura</Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
 
         {/* Histori Kebaikan */}
         <Text style={styles.sectionTitle}>Riwayat Aksi Kebaikan</Text>
@@ -1225,6 +1246,12 @@ export default function ProfileScreen() {
             </Text>
           </View>
         )}
+
+        {/* Keluar Akun */}
+        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+          <Text style={styles.logoutBtnText}>Keluar Akun</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -2330,5 +2357,37 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontStyle: 'italic',
     marginTop: 4,
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    borderRadius: 16,
+    paddingVertical: 14,
+    marginHorizontal: 20,
+    marginTop: 30,
+    marginBottom: 40,
+    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+  },
+  logoutBtnText: {
+    color: '#EF4444',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  editProfileSubmitBtn: {
+    backgroundColor: '#EC4899',
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 15,
+  },
+  editProfileSubmitText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

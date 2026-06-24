@@ -15,16 +15,44 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { dbService } from '@/services/database';
 
+const INDONESIAN_MONTHS = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
+const WEEKDAYS = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+// Mapping warna dot berdasarkan tipe kesibukan
+const TYPE_COLORS: Record<string, string> = {
+  busy: '#34D399',      // Hijau/Cyan (Sibuk Mandiri)
+  personal: '#F97316',  // Orange (Misi Personal)
+  public: '#8B5CF6',    // Ungu (Misi Publik)
+  event: '#FACC15',     // Kuning (Misi Event)
+};
+
+const TYPE_NAMES: Record<string, string> = {
+  busy: 'Sibuk Mandiri',
+  personal: 'Misi Personal',
+  public: 'Misi Publik',
+  event: 'Misi Event',
+};
+
 export default function CalendarScreen() {
   const [schedules, setSchedules] = useState<any[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   
+  // Navigation & Date States
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
   // Form States
   const [title, setTitle] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [freq, setFreq] = useState<'once' | 'monthly'>('once');
+  const [selectedType, setSelectedType] = useState<'busy' | 'personal' | 'public' | 'event'>('busy');
 
-  // Muat jadwal dari database/localstorage
+  // Muat jadwal
   const loadSchedules = async () => {
     try {
       const data = await dbService.getSchedules();
@@ -38,15 +66,54 @@ export default function CalendarScreen() {
     loadSchedules();
   }, []);
 
-  // Simpan jadwal baru
+  const formatDateString = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  // Filter jadwal untuk tanggal terpilih
+  const getSchedulesForSelectedDate = () => {
+    const selectedStr = formatDateString(selectedDate);
+    const selectedDayNum = selectedDate.getDate();
+    
+    return schedules.filter((s: any) => {
+      // Jika tidak ada parameter date, anggap selalu muncul/rutinitas harian
+      if (!s.date) return true;
+      
+      if (s.frequency === 'monthly') {
+        const itemDay = new Date(s.date).getDate();
+        return itemDay === selectedDayNum;
+      }
+      return s.date === selectedStr;
+    });
+  };
+
+  // Ambil jenis tipe unik kesibukan untuk dot indicator
+  const getDotsForDate = (date: Date) => {
+    const dateStr = formatDateString(date);
+    const dayNum = date.getDate();
+    
+    const daySchedules = schedules.filter((s: any) => {
+      if (!s.date) return true;
+      if (s.frequency === 'monthly') {
+        const itemDay = new Date(s.date).getDate();
+        return itemDay === dayNum;
+      }
+      return s.date === dateStr;
+    });
+
+    return Array.from(new Set(daySchedules.map((s: any) => s.type || 'busy')));
+  };
+
+  // Simpan jadwal
   const handleAddSchedule = async () => {
-    // Validasi input sederhana
     if (!title.trim() || !startTime.trim() || !endTime.trim()) {
       Alert.alert('Eits', 'Tolong isi semua bidangnya dulu, cuy!');
       return;
     }
 
-    // Validasi format waktu HH:MM
     const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
     if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
       Alert.alert('Format Salah', 'Waktu harus menggunakan format 24 jam (misal: 08:30 atau 14:00)!');
@@ -59,16 +126,19 @@ export default function CalendarScreen() {
     }
 
     try {
-      await dbService.addSchedule(title, startTime, endTime);
-      Alert.alert('Mantap', `Jadwal "${title}" berhasil ditambahkan.`);
+      const dateStr = formatDateString(selectedDate);
+      await dbService.addSchedule(title, startTime, endTime, dateStr, freq, selectedType);
+      
+      Alert.alert('Mantap', `Jadwal "${title}" berhasil disimpan di kalender.`);
       
       // Reset form
       setTitle('');
       setStartTime('');
       setEndTime('');
+      setFreq('once');
+      setSelectedType('busy');
       setIsAdding(false);
       
-      // Reload schedules
       loadSchedules();
     } catch (e) {
       console.error(e);
@@ -99,6 +169,32 @@ export default function CalendarScreen() {
     );
   };
 
+  // Perhitungan kalender grid
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+  const firstDayIndex = new Date(year, month, 1).getDay();
+
+  const handlePrevMonth = () => {
+    setCurrentMonth(new Date(year, month - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth(new Date(year, month + 1, 1));
+  };
+
+  // Menyusun array grid hari
+  const gridDays: (Date | null)[] = [];
+  for (let i = 0; i < firstDayIndex; i++) {
+    gridDays.push(null);
+  }
+  for (let d = 1; d <= totalDays; d++) {
+    gridDays.push(new Date(year, month, d));
+  }
+
+  const selectedDateStr = formatDateString(selectedDate);
+  const activeDaySchedules = getSchedulesForSelectedDate();
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1E293B" translucent={false} />
@@ -106,13 +202,14 @@ export default function CalendarScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        {/* Glow Effects */}
+        {/* Glow Green Background */}
         <View style={styles.glowGreen} />
 
+        {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.headerTitle}>Agenda & Sibuk Lu</Text>
-            <Text style={styles.headerSubtitle}>Tulis jam sibuk lu biar Sobat Peka ga ganggu.</Text>
+            <Text style={styles.headerTitle}>Agenda & Kalender</Text>
+            <Text style={styles.headerSubtitle}>Atur jadwal senggang & misi harian lu di sini.</Text>
           </View>
           <TouchableOpacity
             style={styles.addButton}
@@ -124,10 +221,108 @@ export default function CalendarScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          
+          {/* Kalender Grid UI */}
+          <View style={styles.calendarCard}>
+            {/* Header navigasi bulan */}
+            <View style={styles.calendarNavRow}>
+              <TouchableOpacity onPress={handlePrevMonth} style={styles.navBtn}>
+                <Ionicons name="chevron-back" size={20} color="#34D399" />
+              </TouchableOpacity>
+              <Text style={styles.monthLabel}>
+                {INDONESIAN_MONTHS[month]} {year}
+              </Text>
+              <TouchableOpacity onPress={handleNextMonth} style={styles.navBtn}>
+                <Ionicons name="chevron-forward" size={20} color="#34D399" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Nama Hari */}
+            <View style={styles.weekdaysRow}>
+              {WEEKDAYS.map((day, idx) => (
+                <Text key={idx} style={styles.weekdayText}>{day}</Text>
+              ))}
+            </View>
+
+            {/* Grid Tanggal */}
+            <View style={styles.daysGrid}>
+              {gridDays.map((dateObj, idx) => {
+                if (!dateObj) {
+                  return <View key={`empty-${idx}`} style={styles.dayCellEmpty} />;
+                }
+
+                const dateStr = formatDateString(dateObj);
+                const isSelected = dateStr === selectedDateStr;
+                const isToday = dateStr === formatDateString(new Date());
+                const dayNum = dateObj.getDate();
+                const dots = getDotsForDate(dateObj);
+
+                return (
+                  <TouchableOpacity
+                    key={`day-${dayNum}`}
+                    style={[
+                      styles.dayCell,
+                      isSelected && styles.dayCellSelected,
+                      isToday && !isSelected && styles.dayCellToday
+                    ]}
+                    onPress={() => setSelectedDate(dateObj)}
+                  >
+                    <Text
+                      style={[
+                        styles.dayNumberText,
+                        isSelected && styles.dayNumberTextSelected,
+                        isToday && !isSelected && styles.dayNumberTextToday
+                      ]}
+                    >
+                      {dayNum}
+                    </Text>
+
+                    {/* Indicator dots */}
+                    {dots.length > 0 && (
+                      <View style={styles.dotsRow}>
+                        {dots.map((type, dIdx) => (
+                          <View
+                            key={dIdx}
+                            style={[
+                              styles.dotIndicator,
+                              { backgroundColor: TYPE_COLORS[type] || '#34D399' }
+                            ]}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Info warna penanda */}
+            <View style={styles.colorLegendRow}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#34D399' }]} />
+                <Text style={styles.legendText}>Sibuk</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#F97316' }]} />
+                <Text style={styles.legendText}>Personal</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#8B5CF6' }]} />
+                <Text style={styles.legendText}>Publik</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#FACC15' }]} />
+                <Text style={styles.legendText}>Event</Text>
+              </View>
+            </View>
+          </View>
+
           {/* Form Tambah Jadwal */}
           {isAdding && (
             <View style={styles.formCard}>
-              <Text style={styles.formTitle}>Tambah Jam Sibuk Baru</Text>
+              <Text style={styles.formTitle}>
+                Tambah Agenda untuk: {selectedDate.getDate()} {INDONESIAN_MONTHS[selectedDate.getMonth()]} {selectedDate.getFullYear()}
+              </Text>
               
               <Text style={styles.inputLabel}>Nama Aktivitas</Text>
               <TextInput
@@ -164,6 +359,48 @@ export default function CalendarScreen() {
                 </View>
               </View>
 
+              {/* Pilihan Frekuensi */}
+              <Text style={styles.inputLabel}>Pengulangan</Text>
+              <View style={styles.freqRow}>
+                <TouchableOpacity
+                  style={[styles.freqBtn, freq === 'once' && styles.freqBtnActive]}
+                  onPress={() => setFreq('once')}
+                >
+                  <Text style={[styles.freqBtnText, freq === 'once' && styles.freqBtnTextActive]}>Sekali Saja</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.freqBtn, freq === 'monthly' && styles.freqBtnActive]}
+                  onPress={() => setFreq('monthly')}
+                >
+                  <Text style={[styles.freqBtnText, freq === 'monthly' && styles.freqBtnTextActive]}>Tiap Bulan</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Pilihan Tipe Kegiatan */}
+              <Text style={styles.inputLabel}>Tipe Kegiatan & Penanda</Text>
+              <View style={styles.typeSelectorRow}>
+                {(['busy', 'personal', 'public', 'event'] as const).map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[
+                      styles.typeSelectorBtn,
+                      { borderColor: TYPE_COLORS[t] },
+                      selectedType === t && { backgroundColor: TYPE_COLORS[t] }
+                    ]}
+                    onPress={() => setSelectedType(t)}
+                  >
+                    <Text
+                      style={[
+                        styles.typeSelectorText,
+                        { color: selectedType === t ? '#0F172A' : TYPE_COLORS[t] }
+                      ]}
+                    >
+                      {TYPE_NAMES[t].split(' ')[1] || TYPE_NAMES[t]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <TouchableOpacity style={styles.submitBtn} onPress={handleAddSchedule}>
                 <Ionicons name="checkmark-circle-outline" size={16} color="#0F172A" />
                 <Text style={styles.submitBtnText}>Simpan ke Agenda</Text>
@@ -172,19 +409,21 @@ export default function CalendarScreen() {
           )}
 
           {/* List Jadwal Kesibukan */}
-          <Text style={styles.listSectionTitle}>Kesibukan Terjadwal Hari Ini</Text>
+          <Text style={styles.listSectionTitle}>
+            Agenda Tanggal: {selectedDate.getDate()} {INDONESIAN_MONTHS[selectedDate.getMonth()]}
+          </Text>
           
-          {schedules.length > 0 ? (
-            schedules.map((item) => (
-              <View key={item.id} style={styles.scheduleCard}>
+          {activeDaySchedules.length > 0 ? (
+            activeDaySchedules.map((item) => (
+              <View key={item.id} style={[styles.scheduleCard, { borderLeftColor: TYPE_COLORS[item.type || 'busy'], borderLeftWidth: 4 }]}>
                 <View style={styles.scheduleInfo}>
-                  <View style={styles.timeIconContainer}>
-                    <Ionicons name="time" size={18} color="#34D399" />
+                  <View style={[styles.timeIconContainer, { backgroundColor: `${TYPE_COLORS[item.type || 'busy']}1A` }]}>
+                    <Ionicons name="time" size={18} color={TYPE_COLORS[item.type || 'busy']} />
                   </View>
                   <View style={styles.scheduleDetails}>
                     <Text style={styles.scheduleTitle}>{item.title}</Text>
                     <Text style={styles.scheduleTime}>
-                      {item.start_time} - {item.end_time}
+                      {item.start_time} - {item.end_time} • <Text style={{ color: TYPE_COLORS[item.type || 'busy'], fontWeight: '700' }}>{TYPE_NAMES[item.type || 'busy']}</Text>
                     </Text>
                   </View>
                 </View>
@@ -202,7 +441,7 @@ export default function CalendarScreen() {
               <Ionicons name="calendar-outline" size={40} color="#475569" style={styles.emptyIcon} />
               <Text style={styles.emptyTitle}>Agenda Lu Kosong Melompong!</Text>
               <Text style={styles.emptyDesc}>
-                Artinya lu gabut total hari ini, rill no cap. Sobat Peka bakal sering cari misi kebaikan terdekat buat lu!
+                Artinya lu gabut total hari ini, rill no cap. Sobat Peka bakal cari rekomendasi misi kebaikan terdekat buat lu!
               </Text>
             </View>
           )}
@@ -212,7 +451,7 @@ export default function CalendarScreen() {
             <Ionicons name="bulb-outline" size={20} color="#FACC15" />
             <Text style={styles.tipsText}>
               <Text style={{ fontWeight: '700', color: '#F8FAFC' }}>Tips Peka: </Text>
-              Sobat Peka menganalisis celah kosong di antara agenda-agenda di atas. Selalu catat jadwal lu di sini biar dapet notifikasi misi di waktu senggang yang pas!
+              Sobat Peka otomatis menyarankan misi kebaikan pada slot kosong agenda lu. Selalu catat agenda kesibukan lu di sini biar ga bentrok, cuy.
             </Text>
           </View>
         </ScrollView>
@@ -233,7 +472,7 @@ const styles = StyleSheet.create({
     width: 300,
     height: 300,
     borderRadius: 150,
-    backgroundColor: 'rgba(52, 211, 153, 0.08)', // Emerald
+    backgroundColor: 'rgba(52, 211, 153, 0.05)',
     filter: 'blur(70px)',
   },
   header: {
@@ -275,20 +514,125 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
+  calendarCard: {
+    backgroundColor: 'rgba(30, 41, 59, 0.7)',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 20,
+  },
+  calendarNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  navBtn: {
+    padding: 8,
+  },
+  monthLabel: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#F8FAFC',
+  },
+  weekdaysRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 8,
+  },
+  weekdayText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '700',
+    width: 36,
+    textAlign: 'center',
+  },
+  daysGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    gap: 4,
+  },
+  dayCell: {
+    width: 42,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 12,
+    marginVertical: 2,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  dayCellEmpty: {
+    width: 42,
+    height: 48,
+    marginVertical: 2,
+  },
+  dayCellSelected: {
+    backgroundColor: '#34D399',
+  },
+  dayCellToday: {
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.4)',
+    backgroundColor: 'rgba(52, 211, 153, 0.08)',
+  },
+  dayNumberText: {
+    color: '#F1F5F9',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  dayNumberTextSelected: {
+    color: '#0F172A',
+    fontWeight: '800',
+  },
+  dayNumberTextToday: {
+    color: '#34D399',
+    fontWeight: '800',
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    gap: 3,
+    marginTop: 4,
+    height: 4,
+  },
+  dotIndicator: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  colorLegendRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+    paddingTop: 12,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '600',
+  },
   formCard: {
     backgroundColor: 'rgba(30, 41, 59, 0.8)',
     borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.25)', // Green border for form
+    borderColor: 'rgba(52, 211, 153, 0.25)',
     borderRadius: 20,
     padding: 20,
     marginBottom: 25,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
   },
   formTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800',
     color: '#F8FAFC',
     marginBottom: 15,
@@ -317,6 +661,50 @@ const styles = StyleSheet.create({
   },
   halfInputContainer: {
     flex: 1,
+  },
+  freqRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 15,
+  },
+  freqBtn: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  freqBtnActive: {
+    borderColor: '#34D399',
+    backgroundColor: 'rgba(52, 211, 153, 0.05)',
+  },
+  freqBtnText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  freqBtnTextActive: {
+    color: '#34D399',
+  },
+  typeSelectorRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+    marginBottom: 20,
+  },
+  typeSelectorBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 70,
+    alignItems: 'center',
+  },
+  typeSelectorText: {
+    fontSize: 10,
+    fontWeight: '800',
   },
   submitBtn: {
     backgroundColor: '#34D399',
@@ -359,7 +747,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(52, 211, 153, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -374,7 +761,7 @@ const styles = StyleSheet.create({
   },
   scheduleTime: {
     color: '#64748B',
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 2,
     fontWeight: '600',
   },
@@ -407,9 +794,9 @@ const styles = StyleSheet.create({
     lineHeight: 15,
   },
   tipsBox: {
-    backgroundColor: 'rgba(250, 204, 21, 0.05)',
+    backgroundColor: 'rgba(250, 204, 21, 0.03)',
     borderWidth: 1,
-    borderColor: 'rgba(250, 204, 21, 0.15)',
+    borderColor: 'rgba(250, 204, 21, 0.12)',
     borderRadius: 16,
     padding: 15,
     flexDirection: 'row',

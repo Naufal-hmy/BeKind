@@ -123,8 +123,42 @@ export const dbService = {
   // === PROFILE ===
   async getProfile() {
     if (isDemoMode) {
+      const sessionEmail = await AsyncStorage.getItem('@demo_session');
+      if (sessionEmail === 'admin') {
+        const data = await AsyncStorage.getItem('@profile_admin');
+        if (data) return JSON.parse(data);
+        const adminProfile = {
+          name: 'Admin BeKind',
+          username: 'admin',
+          role: 'admin',
+          email: 'admin@gmail.com',
+          aura_points: 999,
+          level: 'Kaisar Empati',
+          avatar_url: 'https://api.dicebear.com/7.x/pixel-art/png?seed=admin',
+        };
+        await AsyncStorage.setItem('@profile_admin', JSON.stringify(adminProfile));
+        return adminProfile;
+      } else if (sessionEmail) {
+        const key = `@profile_${sessionEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const data = await AsyncStorage.getItem(key);
+        if (data) return JSON.parse(data);
+        
+        const usernamePart = sessionEmail.split('@')[0];
+        const userProfile = {
+          name: usernamePart.charAt(0).toUpperCase() + usernamePart.slice(1),
+          username: usernamePart,
+          role: 'user',
+          email: sessionEmail,
+          aura_points: 150,
+          level: 'Peka-Beginner',
+          avatar_url: `https://api.dicebear.com/7.x/pixel-art/png?seed=${usernamePart}`,
+        };
+        await AsyncStorage.setItem(key, JSON.stringify(userProfile));
+        return userProfile;
+      }
+      
       const data = await AsyncStorage.getItem('@profile');
-      return data ? JSON.parse(data) : INITIAL_PROFILE;
+      return data ? JSON.parse(data) : { ...INITIAL_PROFILE, role: 'user', email: 'bestie_peka@gmail.com' };
     } else {
       const { data: userData, error: userError } = await supabase!.auth.getUser();
       if (userError || !userData.user) throw new Error('User tidak terautentikasi');
@@ -137,18 +171,20 @@ export const dbService = {
       
       if (error) {
         if (error.code === 'PGRST116') {
-          // Buat profil default jika belum ada di database
           const userId = userData.user.id;
-          const fallbackName = userData.user.user_metadata?.name || 'Bestie Peka';
-          const fallbackUsername = userData.user.user_metadata?.username || `peka_${userId.substring(0, 6)}`;
+          const isEmailAdmin = userData.user.email === 'admin@gmail.com';
+          const fallbackName = isEmailAdmin ? 'Admin BeKind' : (userData.user.user_metadata?.name || 'Bestie Peka');
+          const fallbackUsername = isEmailAdmin ? 'admin' : (userData.user.user_metadata?.username || `peka_${userId.substring(0, 6)}`);
+          const fallbackRole = isEmailAdmin ? 'admin' : 'user';
           
           const newProfile = {
             id: userId,
             name: fallbackName,
             username: fallbackUsername,
-            aura_points: 150,
-            level: 'Peka-Beginner',
-            avatar_url: `https://api.dicebear.com/7.x/pixel-art/png?seed=${userId}`,
+            role: fallbackRole,
+            aura_points: fallbackRole === 'admin' ? 999 : 150,
+            level: fallbackRole === 'admin' ? 'Kaisar Empati' : 'Peka-Beginner',
+            avatar_url: `https://api.dicebear.com/7.x/pixel-art/png?seed=${fallbackUsername}`,
           };
           
           const { data: insertedData, error: insertError } = await supabase!
@@ -162,17 +198,32 @@ export const dbService = {
         }
         throw error;
       }
+      
+      if (data) {
+        if (userData.user.email === 'admin@gmail.com' && data.role !== 'admin') {
+          const { data: updatedData } = await supabase!
+            .from('profiles')
+            .update({ role: 'admin', aura_points: 999, level: 'Kaisar Empati' })
+            .eq('id', userData.user.id)
+            .select()
+            .single();
+          if (updatedData) return updatedData;
+        }
+        return data;
+      }
       return data;
     }
   },
 
   async updateAuraPoints(additionalPoints: number) {
     if (isDemoMode) {
-      const profileStr = await AsyncStorage.getItem('@profile');
+      const sessionEmail = await AsyncStorage.getItem('@demo_session') || 'default';
+      const key = sessionEmail === 'admin' ? '@profile_admin' : (sessionEmail === 'default' ? '@profile' : `@profile_${sessionEmail.replace(/[^a-zA-Z0-9]/g, '_')}`);
+      
+      const profileStr = await AsyncStorage.getItem(key);
       const profile = profileStr ? JSON.parse(profileStr) : { ...INITIAL_PROFILE };
       profile.aura_points += additionalPoints;
       
-      // Hitung Level Berdasarkan Aura Points
       if (profile.aura_points >= 500) {
         profile.level = 'Kaisar Empati';
       } else if (profile.aura_points >= 300) {
@@ -183,10 +234,9 @@ export const dbService = {
         profile.level = 'Peka-Beginner';
       }
 
-      await AsyncStorage.setItem('@profile', JSON.stringify(profile));
+      await AsyncStorage.setItem(key, JSON.stringify(profile));
       return profile;
     } else {
-      // Dapatkan dulu profile saat ini
       const { data: profile, error: fetchErr } = await supabase!
         .from('profiles')
         .select('aura_points')
@@ -211,10 +261,13 @@ export const dbService = {
 
   async updateProfileAvatar(avatarUrl: string) {
     if (isDemoMode) {
-      const profileStr = await AsyncStorage.getItem('@profile');
+      const sessionEmail = await AsyncStorage.getItem('@demo_session') || 'default';
+      const key = sessionEmail === 'admin' ? '@profile_admin' : (sessionEmail === 'default' ? '@profile' : `@profile_${sessionEmail.replace(/[^a-zA-Z0-9]/g, '_')}`);
+      
+      const profileStr = await AsyncStorage.getItem(key);
       const profile = profileStr ? JSON.parse(profileStr) : { ...INITIAL_PROFILE };
       profile.avatar_url = avatarUrl;
-      await AsyncStorage.setItem('@profile', JSON.stringify(profile));
+      await AsyncStorage.setItem(key, JSON.stringify(profile));
       return profile;
     } else {
       const { data: userData, error: userError } = await supabase!.auth.getUser();
@@ -223,6 +276,32 @@ export const dbService = {
       const { data, error } = await supabase!
         .from('profiles')
         .update({ avatar_url: avatarUrl })
+        .eq('id', userData.user.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  async updateProfileInfo(name: string, username: string) {
+    if (isDemoMode) {
+      const sessionEmail = await AsyncStorage.getItem('@demo_session') || 'default';
+      const key = sessionEmail === 'admin' ? '@profile_admin' : (sessionEmail === 'default' ? '@profile' : `@profile_${sessionEmail.replace(/[^a-zA-Z0-9]/g, '_')}`);
+      
+      const profileStr = await AsyncStorage.getItem(key);
+      const profile = profileStr ? JSON.parse(profileStr) : { ...INITIAL_PROFILE };
+      profile.name = name;
+      profile.username = username;
+      await AsyncStorage.setItem(key, JSON.stringify(profile));
+      return profile;
+    } else {
+      const { data: userData, error: userError } = await supabase!.auth.getUser();
+      if (userError || !userData.user) throw new Error('User tidak terautentikasi');
+      
+      const { data, error } = await supabase!
+        .from('profiles')
+        .update({ name, username })
         .eq('id', userData.user.id)
         .select()
         .single();
@@ -250,26 +329,35 @@ export const dbService = {
     }
   },
 
-  async addSchedule(title: string, start_time: string, end_time: string) {
+  async addSchedule(
+    title: string, 
+    start_time: string, 
+    end_time: string, 
+    date: string | null = null, 
+    frequency: string = 'once', 
+    type: string = 'busy'
+  ) {
     const newSchedule = {
       id: Math.random().toString(36).substring(7),
       title,
       start_time,
       end_time,
+      date,
+      frequency,
+      type,
     };
 
     if (isDemoMode) {
       const dataStr = await AsyncStorage.getItem('@schedules');
       const schedules = dataStr ? JSON.parse(dataStr) : [];
       schedules.push(newSchedule);
-      // Urutkan berdasarkan start_time
       schedules.sort((a: any, b: any) => a.start_time.localeCompare(b.start_time));
       await AsyncStorage.setItem('@schedules', JSON.stringify(schedules));
       return newSchedule;
     } else {
       const { data, error } = await supabase!
         .from('schedules')
-        .insert([{ title, start_time, end_time }])
+        .insert([{ title, start_time, end_time, date, frequency, type }])
         .select()
         .single();
       if (error) throw error;
@@ -635,15 +723,15 @@ export const dbService = {
     let targetStatus = 'approved';
 
     if (isDemoMode) {
-      // 1. Ambil Profil
-      const profileStr = await AsyncStorage.getItem('@profile');
+      const sessionEmail = await AsyncStorage.getItem('@demo_session') || 'default';
+      const key = sessionEmail === 'admin' ? '@profile_admin' : (sessionEmail === 'default' ? '@profile' : `@profile_${sessionEmail.replace(/[^a-zA-Z0-9]/g, '_')}`);
+      const profileStr = await AsyncStorage.getItem(key);
       const profile = profileStr ? JSON.parse(profileStr) : { ...INITIAL_PROFILE };
 
       if (profile.daily_streak === undefined) profile.daily_streak = 0;
       if (profile.personal_streak === undefined) profile.personal_streak = 0;
 
       if (mission.type === 'personal') {
-        // Update Personal Habit Streak (tidak berpengaruh ke multiplier)
         const lastDate = profile.last_personal_streak_date;
         if (!lastDate) {
           profile.personal_streak = 1;
@@ -657,7 +745,6 @@ export const dbService = {
         profile.last_personal_streak_date = todayStr;
         finalPointsGained = 0;
       } else {
-        // Update Leaderboard Streak (Misi System/Public)
         const lastDate = profile.last_streak_date;
         let activeStreak = profile.daily_streak || 0;
         if (!lastDate) {
@@ -690,15 +777,14 @@ export const dbService = {
         }
       }
 
-      await AsyncStorage.setItem('@profile', JSON.stringify(profile));
+      await AsyncStorage.setItem(key, JSON.stringify(profile));
 
-      // 2. Tambah ke completed missions
       const completedStr = await AsyncStorage.getItem('@completed_missions');
       const completed = completedStr ? JSON.parse(completedStr) : [];
       
       const newCompletion = {
         id: Math.random().toString(36).substring(7),
-        user_id: 'm_current_user',
+        user_id: sessionEmail,
         mission_id: missionId,
         photo_url: photoUri,
         completed_at: new Date().toISOString(),
@@ -808,16 +894,19 @@ export const dbService = {
       const completed = completedStr ? JSON.parse(completedStr) : [];
       let points = 0;
       
+      let workerEmail = 'default';
       const updated = completed.map((c: any) => {
         if (c.id === completedMissionId) {
           points = c.points_gained;
+          workerEmail = c.user_id;
           return { ...c, status: 'approved' };
         }
         return c;
       });
       await AsyncStorage.setItem('@completed_missions', JSON.stringify(updated));
 
-      const profileStr = await AsyncStorage.getItem('@profile');
+      const key = workerEmail === 'admin' ? '@profile_admin' : (workerEmail === 'default' ? '@profile' : `@profile_${workerEmail.replace(/[^a-zA-Z0-9]/g, '_')}`);
+      const profileStr = await AsyncStorage.getItem(key);
       const profile = profileStr ? JSON.parse(profileStr) : { ...INITIAL_PROFILE };
       profile.aura_points += points;
       
@@ -826,7 +915,7 @@ export const dbService = {
       else if (profile.aura_points >= 200) profile.level = 'Bestie Peduli';
       else profile.level = 'Peka-Beginner';
       
-      await AsyncStorage.setItem('@profile', JSON.stringify(profile));
+      await AsyncStorage.setItem(key, JSON.stringify(profile));
       return true;
     } else {
       const { data: comp, error: compErr } = await supabase!
@@ -942,6 +1031,14 @@ export const dbService = {
         points: p.aura_points,
         level: p.level
       }));
+    }
+  },
+
+  async signOut() {
+    if (isDemoMode) {
+      await AsyncStorage.removeItem('@demo_session');
+    } else {
+      await supabase!.auth.signOut();
     }
   },
 
