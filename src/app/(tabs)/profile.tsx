@@ -21,6 +21,74 @@ import { dbService, isDemoMode } from '@/services/database';
 import { useKindnessAgent } from '@/context/AgentContext';
 import { SharedProfileHeader, SharedLogoutButton } from '@/components/SharedProfileHeader';
 
+// Impor React Native Maps hanya jika bukan di Web untuk mencegah crash
+let MapView: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    const Maps = require('react-native-maps');
+    MapView = Maps.default;
+  } catch (e) {
+    console.log('Gagal memuat react-native-maps di profil:', e);
+  }
+}
+
+// Helper untuk hitung jarak (offline reverse-geocoding)
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius bumi (km)
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function getClosestLandmark(lat: number, lng: number) {
+  const landmarks = [
+    { name: 'Monumen Nasional (Monas)', lat: -6.1754, lng: 106.8272 },
+    { name: 'Bundaran HI', lat: -6.1950, lng: 106.8230 },
+    { name: 'Taman Suropati Menteng', lat: -6.2008, lng: 106.8326 },
+    { name: 'Lapangan Banteng', lat: -6.1706, lng: 106.8344 },
+    { name: 'Grand Indonesia', lat: -6.1952, lng: 106.8203 },
+    { name: 'Gelora Bung Karno (GBK)', lat: -6.2183, lng: 106.8022 },
+    { name: 'Ragunan Zoo', lat: -6.3124, lng: 106.8202 },
+    { name: 'Kota Tua Jakarta', lat: -6.1376, lng: 106.8124 },
+    { name: 'Stasiun Gambir', lat: -6.1767, lng: 106.8306 },
+    { name: 'Gedung Sate Bandung', lat: -6.9024, lng: 107.6186 },
+    { name: 'Taman Balai Kota Bandung', lat: -6.9135, lng: 107.6096 },
+    { name: 'Jl. Riau (FO Area) Bandung', lat: -6.9015, lng: 107.6200 },
+    { name: 'Unpad Dipatiukur Bandung', lat: -6.8925, lng: 107.6178 },
+    { name: 'Lapangan Saparua Bandung', lat: -6.9069, lng: 107.6163 },
+    { name: 'Alun-Alun Bandung', lat: -6.9219, lng: 107.6069 },
+    { name: 'Cihampelas Walk Bandung', lat: -6.8965, lng: 107.6104 },
+    { name: 'Paris Van Java Bandung', lat: -6.8895, lng: 107.5960 },
+    { name: 'Simpang Dago Bandung', lat: -6.8850, lng: 107.6135 },
+  ];
+
+  let minDistance = Infinity;
+  let closest = landmarks[0];
+
+  for (const lm of landmarks) {
+    const dist = getDistance(lat, lng, lm.lat, lm.lng);
+    if (dist < minDistance) {
+      minDistance = dist;
+      closest = lm;
+    }
+  }
+
+  if (minDistance <= 2.0) {
+    if (minDistance <= 0.2) {
+      return closest.name;
+    }
+    return `Sekitar ${closest.name}`;
+  }
+  return `Lokasi Peta (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+}
+
 // Papan Peringkat Mock Gen Z
 const LEADERBOARD = [
   { rank: 1, name: 'Anya_Care', points: 720, level: 'Kaisar Empati' },
@@ -40,7 +108,7 @@ const MOCK_ACTION_IMAGES: Record<string, string> = {
 };
 
 export default function ProfileScreen() {
-  const { activeSuggestion, dismissSuggestion } = useKindnessAgent();
+  const { activeSuggestion, dismissSuggestion, currentLocation } = useKindnessAgent();
   const [profile, setProfile] = useState<any>({
     name: 'Bestie Peka',
     username: 'bestie_peka',
@@ -84,6 +152,9 @@ export default function ProfileScreen() {
   const [showQRISPaymentModal, setShowQRISPaymentModal] = useState(false);
   const [qrisUrl, setQrisUrl] = useState('');
   const [isCreatingMissionLoading, setIsCreatingMissionLoading] = useState(false);
+  const [newLatitude, setNewLatitude] = useState(-6.2008);
+  const [newLongitude, setNewLongitude] = useState(106.8326);
+  const [showMapPicker, setShowMapPicker] = useState(false);
 
   // States Verifikasi & Sengketa CS
   const [pendingVerifications, setPendingVerifications] = useState<any[]>([]);
@@ -315,8 +386,8 @@ export default function ProfileScreen() {
           newTitle,
           newDesc,
           newCategory,
-          -6.9024,
-          107.6186,
+          newLatitude,
+          newLongitude,
           0,
           newLocation,
           'personal',
@@ -343,8 +414,8 @@ export default function ProfileScreen() {
             newTitle,
             newDesc,
             newCategory,
-            -6.9024,
-            107.6186,
+            newLatitude,
+            newLongitude,
             pts,
             newLocation,
             'public',
@@ -377,8 +448,8 @@ export default function ProfileScreen() {
         newTitle,
         newDesc,
         newCategory,
-        -6.9024,
-        107.6186,
+        newLatitude,
+        newLongitude,
         pts,
         newLocation,
         'public',
@@ -406,6 +477,8 @@ export default function ProfileScreen() {
     setNewCategory('Sosial');
     setNewMode('solo');
     setPaymentMethod('points');
+    setNewLatitude(currentLocation ? currentLocation.latitude : -6.2008);
+    setNewLongitude(currentLocation ? currentLocation.longitude : 106.8326);
   };
 
   const handleApproveCompletion = async (completedId: string) => {
@@ -810,13 +883,27 @@ export default function ProfileScreen() {
               />
 
               <Text style={styles.formLabel}>Nama Lokasi</Text>
-              <TextInput 
-                style={styles.formInput} 
-                value={newLocation} 
-                onChangeText={setNewLocation} 
-                placeholder="Contoh: Perpusda / Rumah Belajar" 
-                placeholderTextColor="#64748B" 
-              />
+              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 15 }}>
+                <TextInput 
+                  style={[styles.formInput, { flex: 1, marginBottom: 0 }]} 
+                  value={newLocation} 
+                  onChangeText={setNewLocation} 
+                  placeholder="Contoh: Perpusda / Rumah Belajar" 
+                  placeholderTextColor="#64748B" 
+                />
+                <TouchableOpacity 
+                  style={styles.mapPickerBtn} 
+                  onPress={() => {
+                    if (currentLocation) {
+                      setNewLatitude(currentLocation.latitude);
+                      setNewLongitude(currentLocation.longitude);
+                    }
+                    setShowMapPicker(true);
+                  }}
+                >
+                  <Ionicons name="map-outline" size={20} color="#FFF" />
+                </TouchableOpacity>
+              </View>
 
               <Text style={styles.formLabel}>Kategori</Text>
               <View style={styles.categorySelector}>
@@ -900,6 +987,101 @@ export default function ProfileScreen() {
                 )}
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* Modal Peta Pemilih Lokasi */}
+      {showMapPicker && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContentMap}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>📍 PILIH LOKASI MISI</Text>
+              <TouchableOpacity onPress={() => setShowMapPicker(false)}>
+                <Ionicons name="close" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            
+            {MapView ? (
+              <View style={{ flex: 1, position: 'relative' }}>
+                <MapView
+                  style={{ flex: 1 }}
+                  initialRegion={{
+                    latitude: newLatitude,
+                    longitude: newLongitude,
+                    latitudeDelta: 0.015,
+                    longitudeDelta: 0.015,
+                  }}
+                  onRegionChangeComplete={(region: any) => {
+                    setNewLatitude(region.latitude);
+                    setNewLongitude(region.longitude);
+                  }}
+                />
+                {/* Pin Tengah Peta (Crosshair) */}
+                <View style={styles.mapCenterPinContainer} pointerEvents="none">
+                  <Ionicons name="pin" size={36} color="#EF4444" />
+                </View>
+              </View>
+            ) : (
+              // Fallback untuk Web / Emulator Tanpa MapView
+              <ScrollView style={{ flex: 1, padding: 15 }} contentContainerStyle={{ gap: 10 }}>
+                <Text style={{ color: '#94A3B8', fontSize: 13, marginBottom: 10 }}>
+                  [Demo Mode/Web] Pilih salah satu landmark di bawah untuk menentukan lokasi:
+                </Text>
+                {[
+                  { name: 'Monumen Nasional (Monas)', lat: -6.1754, lng: 106.8272 },
+                  { name: 'Bundaran HI', lat: -6.1950, lng: 106.8230 },
+                  { name: 'Taman Suropati Menteng', lat: -6.2008, lng: 106.8326 },
+                  { name: 'Lapangan Banteng', lat: -6.1706, lng: 106.8344 },
+                  { name: 'Grand Indonesia', lat: -6.1952, lng: 106.8203 },
+                  { name: 'Gedung Sate Bandung', lat: -6.9024, lng: 107.6186 },
+                  { name: 'Taman Balai Kota Bandung', lat: -6.9135, lng: 107.6096 },
+                  { name: 'Jl. Riau Bandung', lat: -6.9015, lng: 107.6200 },
+                  { name: 'Unpad Dipatiukur Bandung', lat: -6.8925, lng: 107.6178 },
+                ].map((lm) => (
+                  <TouchableOpacity
+                    key={lm.name}
+                    style={{
+                      backgroundColor: '#1E293B',
+                      borderWidth: 1,
+                      borderColor: newLatitude === lm.lat ? '#34D399' : '#334155',
+                      borderRadius: 12,
+                      padding: 12,
+                    }}
+                    onPress={() => {
+                      setNewLatitude(lm.lat);
+                      setNewLongitude(lm.lng);
+                    }}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: 'bold' }}>{lm.name}</Text>
+                    <Text style={{ color: '#64748B', fontSize: 11, marginTop: 2 }}>
+                      Lat: {lm.lat.toFixed(4)}, Lng: {lm.lng.toFixed(4)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            <View style={{ padding: 15, borderTopWidth: 1, borderTopColor: '#334155', backgroundColor: '#1E293B' }}>
+              <Text style={{ color: '#94A3B8', fontSize: 11, marginBottom: 4 }}>Lokasi Terpilih:</Text>
+              <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 14 }}>
+                {getClosestLandmark(newLatitude, newLongitude)}
+              </Text>
+              <Text style={{ color: '#34D399', fontSize: 11, marginTop: 2 }}>
+                Koordinat: {newLatitude.toFixed(6)}, {newLongitude.toFixed(6)}
+              </Text>
+              
+              <TouchableOpacity
+                style={styles.confirmMapBtn}
+                onPress={() => {
+                  const locationName = getClosestLandmark(newLatitude, newLongitude);
+                  setNewLocation(locationName);
+                  setShowMapPicker(false);
+                }}
+              >
+                <Text style={styles.confirmMapBtnText}>Konfirmasi Lokasi</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
@@ -2438,6 +2620,47 @@ const styles = StyleSheet.create({
   editProfileSubmitText: {
     color: '#FFF',
     fontSize: 14,
+    fontWeight: '800',
+  },
+  mapPickerBtn: {
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 12,
+    width: 48,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContentMap: {
+    backgroundColor: '#0F172A',
+    width: '90%',
+    height: '75%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
+    overflow: 'hidden',
+  },
+  mapCenterPinContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -18,
+    marginTop: -36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmMapBtn: {
+    backgroundColor: '#34D399',
+    borderRadius: 12,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  confirmMapBtnText: {
+    color: '#0F172A',
+    fontSize: 13,
     fontWeight: '800',
   },
 });

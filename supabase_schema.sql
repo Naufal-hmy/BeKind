@@ -177,3 +177,30 @@ ALTER TABLE public.missions ADD COLUMN IF NOT EXISTS event_name TEXT DEFAULT NUL
 ALTER TABLE public.missions ADD COLUMN IF NOT EXISTS creator_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE DEFAULT NULL;
 ALTER TABLE public.missions ADD COLUMN IF NOT EXISTS payment_method TEXT DEFAULT NULL;
 ALTER TABLE public.missions ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT NULL;
+
+-- Recreate Missions RLS policies to resolve insert violations
+DROP POLICY IF EXISTS "Read public and system missions, plus own personal" ON public.missions;
+DROP POLICY IF EXISTS "Allow authenticated manage missions" ON public.missions;
+DROP POLICY IF EXISTS "Allow insert missions" ON public.missions;
+DROP POLICY IF EXISTS "Allow update own missions" ON public.missions;
+DROP POLICY IF EXISTS "Allow delete own missions" ON public.missions;
+DROP POLICY IF EXISTS "Allow select missions" ON public.missions;
+DROP POLICY IF EXISTS "Allow update missions" ON public.missions;
+DROP POLICY IF EXISTS "Allow delete missions" ON public.missions;
+
+-- Allow SELECT for everyone (system and public), and for creators on their own personal missions
+CREATE POLICY "Allow select missions" ON public.missions
+  FOR SELECT USING (type = 'system' OR type = 'public' OR creator_id = auth.uid() OR creator_id IS NULL);
+
+-- Allow INSERT for authenticated users
+CREATE POLICY "Allow insert missions" ON public.missions
+  FOR INSERT TO authenticated WITH CHECK (true);
+
+-- Allow UPDATE for creator
+CREATE POLICY "Allow update missions" ON public.missions
+  FOR UPDATE TO authenticated USING (creator_id = auth.uid()) WITH CHECK (creator_id = auth.uid());
+
+-- Allow DELETE for creator
+CREATE POLICY "Allow delete missions" ON public.missions
+  FOR DELETE TO authenticated USING (creator_id = auth.uid());
+

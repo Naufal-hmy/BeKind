@@ -56,11 +56,138 @@ export default function CalendarScreen() {
   const [freq, setFreq] = useState<'once' | 'monthly'>('once');
   const [selectedType, setSelectedType] = useState<'busy' | 'personal' | 'public' | 'event'>('busy');
 
-  // Muat jadwal
+  // Muat jadwal & data event misi aktif
   const loadSchedules = async () => {
     try {
-      const data = await dbService.getSchedules();
-      setSchedules(data);
+      const dbSchedules = await dbService.getSchedules();
+      
+      let activeSuggestions: any[] = [];
+      try {
+        const sugs = await dbService.getSuggestions();
+        activeSuggestions = sugs
+          .filter((s: any) => s.status === 'accepted' && s.mission)
+          .map((s: any) => {
+            const dateStr = s.created_at ? s.created_at.substring(0, 10) : formatDateString(new Date());
+            return {
+              id: s.id,
+              title: `🎯 Misi: ${s.mission.title}`,
+              start_time: s.free_start_time,
+              end_time: s.free_end_time,
+              date: dateStr,
+              frequency: 'once',
+              type: s.mission.is_event_mission ? 'event' : 'personal',
+              isSuggestion: true
+            };
+          });
+      } catch (err) {
+        console.warn('Gagal memuat saran aktif untuk kalender:', err);
+      }
+
+      // Buat data dummy event dinamis agar kalender demo selalu terisi & menunjukkan deadline hari ini/besok
+      const now = new Date();
+      const todayStr = formatDateString(now);
+      
+      const tomorrow = new Date(now);
+      tomorrow.setDate(now.getDate() + 1);
+      const tomorrowStr = formatDateString(tomorrow);
+      
+      const expHour = now.getHours() - 2;
+      const expStartStr = expHour > 0 ? `${String(expHour).padStart(2, '0')}:00` : '07:00';
+      const expEndStr = expHour > 0 ? `${String(expHour + 1).padStart(2, '0')}:00` : '08:00';
+      
+      const soonEnd = new Date(now.getTime() + 15 * 60 * 1000);
+      const soonStart = new Date(now.getTime() - 45 * 60 * 1000);
+      const soonStartStr = `${String(soonStart.getHours()).padStart(2, '0')}:${String(soonStart.getMinutes()).padStart(2, '0')}`;
+      const soonEndStr = `${String(soonEnd.getHours()).padStart(2, '0')}:${String(soonEnd.getMinutes()).padStart(2, '0')}`;
+      
+      const actStart = new Date(now.getTime() + 60 * 60 * 1000);
+      const actEnd = new Date(now.getTime() + 120 * 60 * 1000);
+      const actStartStr = `${String(actStart.getHours()).padStart(2, '0')}:${String(actStart.getMinutes()).padStart(2, '0')}`;
+      const actEndStr = `${String(actEnd.getHours()).padStart(2, '0')}:${String(actEnd.getMinutes()).padStart(2, '0')}`;
+
+      const dynamicDemoEvents = [
+        {
+          id: 'demo_evt_expired',
+          title: '🎯 Misi Selesai: Kasih Makan Kucing Monas',
+          start_time: expStartStr,
+          end_time: expEndStr,
+          date: todayStr,
+          frequency: 'once',
+          type: 'event',
+          isDemo: true
+        },
+        {
+          id: 'demo_evt_soon',
+          title: '⚠️ Deadline Misi: Pungut Sampah Lapangan Banteng',
+          start_time: soonStartStr,
+          end_time: soonEndStr,
+          date: todayStr,
+          frequency: 'once',
+          type: 'event',
+          isDemo: true
+        },
+        {
+          id: 'demo_evt_active',
+          title: '📅 Rencana Misi: Beli Cemilan Pedagang HI',
+          start_time: actStartStr,
+          end_time: actEndStr,
+          date: todayStr,
+          frequency: 'once',
+          type: 'event',
+          isDemo: true
+        },
+        {
+          id: 'demo_evt_tomorrow',
+          title: '🌟 Misi Besok: Berbagi Makanan Menteng',
+          start_time: '09:00',
+          end_time: '10:30',
+          date: tomorrowStr,
+          frequency: 'once',
+          type: 'event',
+          isDemo: true
+        }
+      ];
+      let missionEvents: any[] = [];
+      try {
+        const ms = await dbService.getMissions();
+        const acceptedMissionIds = new Set(
+          activeSuggestions.map((s: any) => s.mission?.id || s.mission_id)
+        );
+
+        missionEvents = ms
+          .filter((m: any) => (m.type === 'personal' || m.type === 'public' || m.is_event_mission) && !acceptedMissionIds.has(m.id))
+          .map((m: any) => {
+            const dateStr = m.created_at ? m.created_at.substring(0, 10) : formatDateString(now);
+            let typeLabel = 'Misi';
+            let calendarType = 'event';
+            if (m.type === 'personal') {
+              typeLabel = 'Misi Personal';
+              calendarType = 'personal';
+            } else if (m.type === 'public') {
+              typeLabel = 'Misi Publik';
+              calendarType = 'public';
+            } else if (m.is_event_mission) {
+              typeLabel = 'Event Spesial';
+              calendarType = 'event';
+            }
+
+            return {
+              id: `mission_${m.id}`,
+              title: `🎯 [${typeLabel}] ${m.title}`,
+              start_time: '08:00', // default waktu mulai misi
+              end_time: '21:00',   // default waktu selesai misi
+              date: dateStr,
+              frequency: 'once',
+              type: calendarType,
+              isMission: true,
+              location: m.location_name
+            };
+          });
+      } catch (err) {
+        console.warn('Gagal memuat misi untuk kalender:', err);
+      }
+
+      setSchedules([...dbSchedules, ...activeSuggestions, ...dynamicDemoEvents, ...missionEvents]);
     } catch (e) {
       console.error('Gagal memuat jadwal:', e);
     }
@@ -551,6 +678,11 @@ export default function CalendarScreen() {
                       <Text style={styles.scheduleTime}>
                         {item.start_time} - {item.end_time} • <Text style={{ color: TYPE_COLORS[item.type || 'busy'], fontWeight: '700' }}>{TYPE_NAMES[item.type || 'busy']}</Text>
                       </Text>
+                      {item.isMission && item.location && (
+                        <Text style={styles.scheduleLocation}>
+                          📍 {item.location}
+                        </Text>
+                      )}
                     </View>
                   </View>
                   
@@ -891,6 +1023,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
     fontWeight: '600',
+  },
+  scheduleLocation: {
+    color: '#94A3B8',
+    fontSize: 11,
+    marginTop: 3,
+    fontWeight: '500',
   },
   deleteBtn: {
     padding: 8,
