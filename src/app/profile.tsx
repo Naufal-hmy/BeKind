@@ -87,7 +87,7 @@ export default function ProfileScreen() {
   // States Verifikasi & Sengketa CS
   const [pendingVerifications, setPendingVerifications] = useState<any[]>([]);
   const [showEOAdminPanel, setShowEOAdminPanel] = useState(false);
-  const [verificationTab, setVerificationTab] = useState<'public' | 'event'>('public');
+  const [verificationTab, setVerificationTab] = useState<'public' | 'event' | 'pending' | 'history' | 'users'>('pending');
   const [disputingCompletion, setDisputingCompletion] = useState<any | null>(null);
   const [disputeReason, setDisputeReason] = useState('');
 
@@ -95,6 +95,7 @@ export default function ProfileScreen() {
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [editName, setEditName] = useState('');
   const [editUsername, setEditUsername] = useState('');
+  const [allProfiles, setAllProfiles] = useState<any[]>([]);
 
   const handleOpenEditProfile = () => {
     setEditName(profile.name || '');
@@ -145,7 +146,18 @@ export default function ProfileScreen() {
       const prof = await dbService.getProfile();
       setProfile(prof);
       const list = await dbService.getCompletedMissions();
-      setHistory(list);
+      
+      const isUserAdmin = prof.role === 'admin';
+      const userHistory = isUserAdmin 
+        ? list 
+        : list.filter((item: any) => {
+            if (isDemoMode) {
+              return item.user_id === prof.email || item.user_id === prof.username;
+            } else {
+              return item.user_id === prof.id;
+            }
+          });
+      setHistory(userHistory);
       
       const missionsList = await dbService.getMissions();
       setAdminMissions(missionsList);
@@ -153,9 +165,13 @@ export default function ProfileScreen() {
       const leadData = await dbService.getLeaderboard();
       setLeaderboard(leadData);
 
-      // Filter pending verifications
       const pendingList = list.filter((c: any) => c.status === 'pending');
       setPendingVerifications(pendingList);
+
+      if (isUserAdmin) {
+        const usersList = await dbService.getAllProfiles();
+        setAllProfiles(usersList);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -166,27 +182,6 @@ export default function ProfileScreen() {
     // Refresh otomatis setiap 3 detik
     const interval = setInterval(loadData, 3000);
     return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const updateCountdown = () => {
-      const now = new Date();
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-      const diff = endOfMonth.getTime() - now.getTime();
-      if (diff <= 0) {
-        setCountdown('Periode Berakhir');
-        return;
-      }
-      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
-      const minutes = Math.floor((diff / 1000 / 60) % 60);
-      const seconds = Math.floor((diff / 1000) % 60);
-      setCountdown(`${days}d ${hours}h ${minutes}m ${seconds}s`);
-    };
-
-    updateCountdown();
-    const timer = setInterval(updateCountdown, 1000);
-    return () => clearInterval(timer);
   }, []);
 
   const handleChangeAvatar = async () => {
@@ -948,12 +943,12 @@ export default function ProfileScreen() {
         </View>
       )}
 
-      {/* Modal Panel Verifikasi Pekerjaan */}
+      {/* Modal Panel Admin Dashboard (Verifikasi & Kontrol) */}
       {showEOAdminPanel && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📋 PANEL VERIFIKASI PEKERJAAN</Text>
+              <Text style={styles.modalTitle}>🛡️ PANEL KONTROL ADMINISTRATOR</Text>
               <TouchableOpacity onPress={() => setShowEOAdminPanel(false)}>
                 <Ionicons name="close" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -962,70 +957,153 @@ export default function ProfileScreen() {
             {/* Tab Selector */}
             <View style={styles.tabHeader}>
               <TouchableOpacity 
-                style={[styles.tabBtn, verificationTab === 'public' && styles.tabBtnActive]} 
-                onPress={() => setVerificationTab('public')}
+                style={[styles.tabBtn, verificationTab === 'pending' && styles.tabBtnActive]} 
+                onPress={() => setVerificationTab('pending')}
               >
-                <Text style={[styles.tabBtnText, verificationTab === 'public' && styles.tabBtnTextActive]}>Misi Publik</Text>
+                <Text style={[styles.tabBtnText, verificationTab === 'pending' && styles.tabBtnTextActive]}>Verifikasi ({pendingVerifications.length})</Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={[styles.tabBtn, verificationTab === 'event' && styles.tabBtnActive]} 
-                onPress={() => setVerificationTab('event')}
+                style={[styles.tabBtn, verificationTab === 'history' && styles.tabBtnActive]} 
+                onPress={() => setVerificationTab('history')}
               >
-                <Text style={[styles.tabBtnText, verificationTab === 'event' && styles.tabBtnTextActive]}>Misi Event (EO/Admin)</Text>
+                <Text style={[styles.tabBtnText, verificationTab === 'history' && styles.tabBtnTextActive]}>Riwayat/Sengketa</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.tabBtn, verificationTab === 'users' && styles.tabBtnActive]} 
+                onPress={() => setVerificationTab('users')}
+              >
+                <Text style={[styles.tabBtnText, verificationTab === 'users' && styles.tabBtnTextActive]}>Daftar User</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {pendingVerifications.filter((item) => {
-                if (verificationTab === 'public') {
-                  return item.mission?.type === 'public';
-                } else {
-                  return item.mission?.is_event_mission === true;
-                }
-              }).length > 0 ? (
-                pendingVerifications.filter((item) => {
-                  if (verificationTab === 'public') {
-                    return item.mission?.type === 'public';
-                  } else {
-                    return item.mission?.is_event_mission === true;
-                  }
-                }).map((item) => (
-                  <View key={item.id} style={styles.verificationCard}>
-                    <View style={styles.verifHeaderRow}>
-                      <Text style={styles.verifWorker}>Pekerja: @{item.user_id === 'm_current_user' ? 'Budi_Peka (Anda)' : 'user_bekind'}</Text>
-                      <Text style={styles.verifPoints}>+{item.points_gained} Aura</Text>
-                    </View>
-                    
-                    <Text style={styles.verifMissionTitle}>{item.mission?.title}</Text>
-                    <Text style={styles.verifLocation}><Ionicons name="pin" size={11} color="#64748B" /> {item.mission?.location_name}</Text>
-                    
-                    {item.photo_url && (
-                      <Image source={{ uri: item.photo_url }} style={styles.verifPhoto} />
-                    )}
+              {/* TAB 1: VERIFIKASI PENDING */}
+              {verificationTab === 'pending' && (
+                pendingVerifications.length > 0 ? (
+                  pendingVerifications.map((item) => (
+                    <View key={item.id} style={styles.verificationCard}>
+                      <View style={styles.verifHeaderRow}>
+                        <Text style={styles.verifWorker}>Pekerja: @{item.user_id === 'm_current_user' || item.user_id === 'admin' ? 'admin' : (item.user_id?.split('@')[0] || 'user')}</Text>
+                        <Text style={styles.verifPoints}>+{item.points_gained} Aura</Text>
+                      </View>
+                      
+                      <Text style={styles.verifMissionTitle}>{item.mission?.title}</Text>
+                      <Text style={styles.verifLocation}><Ionicons name="pin" size={11} color="#64748B" /> {item.mission?.location_name}</Text>
+                      
+                      {item.photo_url && (
+                        <Image source={{ uri: item.photo_url }} style={styles.verifPhoto} />
+                      )}
 
-                    <View style={styles.verifActionRow}>
-                      <TouchableOpacity 
-                        style={styles.verifApproveBtn}
-                        onPress={() => handleApproveCompletion(item.id)}
-                      >
-                        <Ionicons name="checkmark-circle-outline" size={16} color="#0F172A" />
-                        <Text style={styles.verifApproveText}>Setujui</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity 
-                        style={styles.verifRejectBtn}
-                        onPress={() => handleRejectCompletion(item.id)}
-                      >
-                        <Ionicons name="close-circle-outline" size={16} color="#EF4444" />
-                        <Text style={styles.verifRejectText}>Tolak</Text>
-                      </TouchableOpacity>
+                      <View style={styles.verifActionRow}>
+                        <TouchableOpacity 
+                          style={styles.verifApproveBtn}
+                          onPress={() => handleApproveCompletion(item.id)}
+                        >
+                          <Ionicons name="checkmark-circle-outline" size={16} color="#0F172A" />
+                          <Text style={styles.verifApproveText}>Setujui</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={styles.verifRejectBtn}
+                          onPress={() => handleRejectCompletion(item.id)}
+                        >
+                          <Ionicons name="close-circle-outline" size={16} color="#EF4444" />
+                          <Text style={styles.verifRejectText}>Tolak</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
+                  ))
+                ) : (
+                  <View style={styles.verifEmptyState}>
+                    <Ionicons name="shield-checkmark-outline" size={40} color="#475569" />
+                    <Text style={styles.verifEmptyText}>Semua pekerjaan sudah terverifikasi bersih, bos!</Text>
                   </View>
-                ))
-              ) : (
-                <View style={styles.verifEmptyState}>
-                  <Ionicons name="shield-checkmark-outline" size={40} color="#475569" />
-                  <Text style={styles.verifEmptyText}>Tidak ada verifikasi pending untuk kategori ini.</Text>
-                </View>
+                )
+              )}
+
+              {/* TAB 2: RIWAYAT & SENGKETA */}
+              {verificationTab === 'history' && (
+                history.filter((h: any) => h.status !== 'pending').length > 0 ? (
+                  history.filter((h: any) => h.status !== 'pending').map((item) => (
+                    <View key={item.id} style={[
+                      styles.verificationCard,
+                      item.status === 'disputed' && { borderColor: '#EF4444', borderWidth: 1 }
+                    ]}>
+                      <View style={styles.verifHeaderRow}>
+                        <Text style={styles.verifWorker}>Pekerja: @{item.user_id === 'm_current_user' || item.user_id === 'admin' ? 'admin' : (item.user_id?.split('@')[0] || 'user')}</Text>
+                        <View style={[
+                          styles.statusBadge,
+                          item.status === 'approved' ? { backgroundColor: 'rgba(52, 211, 153, 0.15)', borderColor: '#34D399' } : { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: '#EF4444' }
+                        ]}>
+                          <Text style={[styles.statusBadgeText, { color: item.status === 'approved' ? '#34D399' : '#EF4444' }]}>
+                            {item.status === 'approved' ? 'DISETUJUI' : 'SENGKETA CS'}
+                          </Text>
+                        </View>
+                      </View>
+                      
+                      <Text style={styles.verifMissionTitle}>{item.mission?.title}</Text>
+                      <Text style={styles.verifLocation}><Ionicons name="pin" size={11} color="#64748B" /> {item.mission?.location_name}</Text>
+                      
+                      {item.status === 'disputed' && item.report_reason && (
+                        <View style={styles.disputeDetails}>
+                          <Text style={{ color: '#EF4444', fontWeight: '700', fontSize: 11, marginBottom: 4 }}>🚨 LAPORAN KECURANGAN USER:</Text>
+                          <Text style={{ color: '#F8FAFC', fontSize: 10, lineHeight: 14 }}>"{item.report_reason}"</Text>
+                        </View>
+                      )}
+
+                      {item.photo_url && (
+                        <Image source={{ uri: item.photo_url }} style={styles.verifPhoto} />
+                      )}
+
+                      {item.status === 'disputed' && (
+                        <View style={styles.verifActionRow}>
+                          <TouchableOpacity 
+                            style={styles.verifApproveBtn}
+                            onPress={() => handleApproveCompletion(item.id)}
+                          >
+                            <Ionicons name="checkmark-circle-outline" size={16} color="#0F172A" />
+                            <Text style={styles.verifApproveText}>Setujui Bukti</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={styles.verifRejectBtn}
+                            onPress={() => handleRejectCompletion(item.id)}
+                          >
+                            <Ionicons name="close-circle-outline" size={16} color="#EF4444" />
+                            <Text style={styles.verifRejectText}>Tolak Bukti</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  ))
+                ) : (
+                  <View style={styles.verifEmptyState}>
+                    <Ionicons name="folder-open-outline" size={40} color="#475569" />
+                    <Text style={styles.verifEmptyText}>Belum ada riwayat aktivitas yang diselesaikan.</Text>
+                  </View>
+                )
+              )}
+
+              {/* TAB 3: DAFTAR USER */}
+              {verificationTab === 'users' && (
+                allProfiles.length > 0 ? (
+                  allProfiles.map((user, uIdx) => (
+                    <View key={uIdx} style={styles.verificationCard}>
+                      <View style={styles.verifHeaderRow}>
+                        <Text style={[styles.verifWorker, { fontSize: 13, fontWeight: '800', color: '#06B6D4' }]}>
+                          @{user.username} {user.role === 'admin' && '👑'}
+                        </Text>
+                        <Text style={[styles.verifPoints, { color: '#FACC15' }]}>+{user.aura_points} Aura</Text>
+                      </View>
+                      <Text style={{ color: '#F1F5F9', fontSize: 12, marginTop: 4 }}>Nama: <Text style={{ fontWeight: '700' }}>{user.name}</Text></Text>
+                      <Text style={{ color: '#94A3B8', fontSize: 11, marginTop: 2 }}>Level: {user.level}</Text>
+                      <Text style={{ color: '#64748B', fontSize: 10, marginTop: 2 }}>Email: {user.email || 'N/A'}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <View style={styles.verifEmptyState}>
+                    <Ionicons name="people-outline" size={40} color="#475569" />
+                    <Text style={styles.verifEmptyText}>Tidak ada user terdaftar.</Text>
+                  </View>
+                )
               )}
             </ScrollView>
           </View>
@@ -1128,15 +1206,18 @@ export default function ProfileScreen() {
 
               <TouchableOpacity 
                 style={[styles.actionBtnCard, { borderColor: '#FACC15' }]} 
-                onPress={() => setShowEOAdminPanel(true)}
+                onPress={() => {
+                  setVerificationTab('pending');
+                  setShowEOAdminPanel(true);
+                }}
               >
-                <Ionicons name="checkbox-outline" size={24} color="#FACC15" />
+                <Ionicons name="shield-checkmark-outline" size={24} color="#FACC15" />
                 {pendingVerifications.length > 0 && (
                   <View style={styles.badgeCount}>
                     <Text style={styles.badgeText}>{pendingVerifications.length}</Text>
                   </View>
                 )}
-                <Text style={styles.actionBtnText}>Verifikasi</Text>
+                <Text style={styles.actionBtnText}>Panel Admin</Text>
               </TouchableOpacity>
             </>
           )}

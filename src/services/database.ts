@@ -1003,12 +1003,16 @@ export const dbService = {
 
   async getLeaderboard() {
     if (isDemoMode) {
-      const profileStr = await AsyncStorage.getItem('@profile');
+      const sessionEmail = await AsyncStorage.getItem('@demo_session') || 'default';
+      const isCurrentAdmin = sessionEmail === 'admin';
+      
+      const profileKey = isCurrentAdmin ? '@profile_admin' : (sessionEmail === 'default' ? '@profile' : `@profile_${sessionEmail.replace(/[^a-zA-Z0-9]/g, '_')}`);
+      const profileStr = await AsyncStorage.getItem(profileKey);
       const profile = profileStr ? JSON.parse(profileStr) : { ...INITIAL_PROFILE };
       
       const LEADERBOARD = [
         { rank: 1, name: 'Anya_Care', points: 720, level: 'Kaisar Empati' },
-        { rank: 2, name: `${profile.name} (You)`, points: profile.aura_points, level: profile.level },
+        ...(isCurrentAdmin ? [] : [{ rank: 2, name: `${profile.name} (You)`, points: profile.aura_points, level: profile.level }]),
         { rank: 3, name: 'Fiki_Gacor', points: 120, level: 'Bestie Peduli' },
         { rank: 4, name: 'Rey_Peka', points: 90, level: 'Peka-Beginner' },
         { rank: 5, name: 'Caca_Kreatif', points: 50, level: 'Peka-Beginner' },
@@ -1017,7 +1021,8 @@ export const dbService = {
     } else {
       const { data, error } = await supabase!
         .from('profiles')
-        .select('id, name, username, aura_points, level')
+        .select('id, name, username, aura_points, level, role')
+        .neq('role', 'admin') // Exclude Admin
         .order('aura_points', { ascending: false })
         .limit(10);
       if (error) throw error;
@@ -1031,6 +1036,45 @@ export const dbService = {
         points: p.aura_points,
         level: p.level
       }));
+    }
+  },
+
+  async getAllProfiles() {
+    if (isDemoMode) {
+      const usersStr = await AsyncStorage.getItem('@registered_users');
+      const users = usersStr ? JSON.parse(usersStr) : [];
+      
+      const adminProfileStr = await AsyncStorage.getItem('@profile_admin');
+      const adminProfile = adminProfileStr ? JSON.parse(adminProfileStr) : null;
+      
+      const all: any[] = [];
+      if (adminProfile) all.push(adminProfile);
+      
+      for (const u of users) {
+        const key = `@profile_${u.email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const pStr = await AsyncStorage.getItem(key);
+        if (pStr) {
+          all.push(JSON.parse(pStr));
+        } else {
+          all.push({
+            name: u.name,
+            username: u.username,
+            role: u.role || 'user',
+            email: u.email,
+            aura_points: 150,
+            level: 'Peka-Beginner',
+            avatar_url: `https://api.dicebear.com/7.x/pixel-art/png?seed=${u.username}`,
+          });
+        }
+      }
+      return all;
+    } else {
+      const { data, error } = await supabase!
+        .from('profiles')
+        .select('*')
+        .order('aura_points', { ascending: false });
+      if (error) throw error;
+      return data;
     }
   },
 
