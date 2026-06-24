@@ -215,6 +215,35 @@ export const dbService = {
     }
   },
 
+  async getAllProfiles() {
+    if (isDemoMode) {
+      // Return mock users for demo mode
+      const sessionEmail = await AsyncStorage.getItem('@demo_session');
+      const currentUser = await this.getProfile();
+      let users = [currentUser];
+      if (sessionEmail === 'admin') {
+        users.push({
+          id: 'user1',
+          name: 'Skylar GenZ',
+          username: 'skylar_peka',
+          role: 'user',
+          email: 'bestie_peka@gmail.com',
+          aura_points: 150,
+          level: 'Peka-Beginner',
+          avatar_url: 'https://api.dicebear.com/7.x/pixel-art/png?seed=skylar',
+        });
+      }
+      return users;
+    } else {
+      const { data, error } = await supabase!
+        .from('profiles')
+        .select('*')
+        .order('aura_points', { ascending: false });
+      if (error) throw error;
+      return data;
+    }
+  },
+
   async updateAuraPoints(additionalPoints: number) {
     if (isDemoMode) {
       const sessionEmail = await AsyncStorage.getItem('@demo_session') || 'default';
@@ -508,12 +537,6 @@ export const dbService = {
     isEventMission: boolean = false,
     eventName: string | null = null
   ) {
-    let creatorId = null;
-    if (!isDemoMode) {
-      const { data: userData } = await supabase!.auth.getUser();
-      creatorId = userData?.user?.id || null;
-    }
-
     const newMission = {
       id: Math.random().toString(36).substring(7),
       title,
@@ -525,7 +548,6 @@ export const dbService = {
       location_name: locationName,
       type,
       mode,
-      creator_id: creatorId,
       payment_method: paymentMethod,
       payment_status: paymentStatus,
       is_event_mission: isEventMission,
@@ -556,7 +578,6 @@ export const dbService = {
           location_name: locationName,
           type,
           mode,
-          creator_id: creatorId,
           payment_method: paymentMethod,
           payment_status: paymentStatus,
           is_event_mission: isEventMission,
