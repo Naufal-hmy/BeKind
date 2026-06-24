@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { dbService, isDemoMode } from '@/services/database';
 import { useKindnessAgent } from '@/context/AgentContext';
+import { SharedProfileHeader, SharedLogoutButton } from '@/components/SharedProfileHeader';
 
 // Papan Peringkat Mock Gen Z
 const LEADERBOARD = [
@@ -1155,81 +1156,51 @@ export default function ProfileScreen() {
       <View style={styles.glowViolet} />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Profile Card Header */}
-        <View style={styles.profileHeader}>
-          <TouchableOpacity style={styles.avatarContainer} onPress={handleChangeAvatar}>
-            <View style={styles.avatarBorder} />
-            <Image 
-              source={{ uri: profile.avatar_url || `https://api.dicebear.com/7.x/fun-emoji/png?seed=${profile.name}` }} 
-              style={styles.avatar} 
-            />
-            <View style={styles.avatarEditBadge}>
-              <Ionicons name="camera" size={12} color="#0F172A" />
-            </View>
-          </TouchableOpacity>
-          
-          <Text style={styles.profileName}>{profile.name}</Text>
-          <Text style={styles.profileUsername}>@{profile.username}</Text>
-
-          <View style={styles.rankContainer}>
-            <Text style={styles.rankText}>{profile.level}</Text>
-          </View>
-          
-          <View style={styles.auraScoreBox}>
-            <Ionicons name="sparkles" size={18} color="#FACC15" />
-            <Text style={styles.auraScoreVal}>+{profile.aura_points}</Text>
-            <Text style={styles.auraScoreLbl}>Aura Points</Text>
-          </View>
-        </View>
-
-        {/* Action Panel Group */}
-        <View style={styles.actionPanelRow}>
-          {profile.role !== 'admin' && (
-            <TouchableOpacity 
-              style={[styles.actionBtnCard, { borderColor: '#06B6D4' }]} 
-              onPress={() => setShowCreateMissionModal(true)}
-            >
-              <Ionicons name="add-circle-outline" size={24} color="#06B6D4" />
-              <Text style={styles.actionBtnText}>Buat Misi</Text>
-            </TouchableOpacity>
-          )}
-
-          {profile.role === 'admin' && (
+        <SharedProfileHeader 
+          profile={profile} 
+          onProfileUpdate={setProfile} 
+          actionButtons={
             <>
-              <TouchableOpacity 
-                style={[styles.actionBtnCard, { borderColor: '#8B5CF6' }]} 
-                onPress={() => setShowAdminPanel(true)}
-              >
-                <Ionicons name="settings-outline" size={24} color="#8B5CF6" />
-                <Text style={styles.actionBtnText}>CRUD Misi</Text>
-              </TouchableOpacity>
+              {profile.role !== 'admin' && (
+                <TouchableOpacity 
+                  style={[styles.actionBtnCard, { borderColor: '#06B6D4' }]} 
+                  onPress={() => setShowCreateMissionModal(true)}
+                >
+                  <Ionicons name="add-circle-outline" size={24} color="#06B6D4" />
+                  <Text style={styles.actionBtnText}>Buat Misi</Text>
+                </TouchableOpacity>
+              )}
 
-              <TouchableOpacity 
-                style={[styles.actionBtnCard, { borderColor: '#FACC15' }]} 
-                onPress={() => {
-                  setVerificationTab('pending');
-                  setShowEOAdminPanel(true);
-                }}
-              >
-                <Ionicons name="shield-checkmark-outline" size={24} color="#FACC15" />
-                {pendingVerifications.length > 0 && (
-                  <View style={styles.badgeCount}>
-                    <Text style={styles.badgeText}>{pendingVerifications.length}</Text>
-                  </View>
-                )}
-                <Text style={styles.actionBtnText}>Panel Admin</Text>
-              </TouchableOpacity>
+              {profile.role === 'admin' && (
+                <>
+                  <TouchableOpacity 
+                    style={[styles.actionBtnCard, { borderColor: '#8B5CF6' }]} 
+                    onPress={() => setShowAdminPanel(true)}
+                  >
+                    <Ionicons name="settings-outline" size={24} color="#8B5CF6" />
+                    <Text style={styles.actionBtnText}>CRUD Misi</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.actionBtnCard, { borderColor: '#FACC15' }]} 
+                    onPress={() => {
+                      setVerificationTab('pending');
+                      setShowEOAdminPanel(true);
+                    }}
+                  >
+                    <Ionicons name="shield-checkmark-outline" size={24} color="#FACC15" />
+                    {pendingVerifications.length > 0 && (
+                      <View style={styles.badgeCount}>
+                        <Text style={styles.badgeText}>{pendingVerifications.length}</Text>
+                      </View>
+                    )}
+                    <Text style={styles.actionBtnText}>Panel Admin</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </>
-          )}
-
-          <TouchableOpacity 
-            style={[styles.actionBtnCard, { borderColor: '#EC4899' }]} 
-            onPress={handleOpenEditProfile}
-          >
-            <Ionicons name="create-outline" size={24} color="#EC4899" />
-            <Text style={styles.actionBtnText}>Edit Profil</Text>
-          </TouchableOpacity>
-        </View>
+          }
+        />
 
         {/* Active Mission Action (Klaim Bukti) */}
         {activeSuggestion && activeSuggestion.status === 'accepted' && (
@@ -1329,10 +1300,7 @@ export default function ProfileScreen() {
         )}
 
         {/* Keluar Akun */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-          <Text style={styles.logoutBtnText}>Keluar Akun</Text>
-        </TouchableOpacity>
+        <SharedLogoutButton />
       </ScrollView>
     </SafeAreaView>
   );

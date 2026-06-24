@@ -21,7 +21,8 @@
       "navigationBar": {
         "backgroundColor": "#1E293B",
         "barStyle": "light-content"
-      }
+      },
+      "package": "com.anonymous.bekind"
     },
     "web": {
       "output": "static",
