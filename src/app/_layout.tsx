@@ -21,8 +21,13 @@ export default function RootLayout() {
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
 
-  // Sembunyikan status bar (baterai, wifi, jam, dll) untuk fullscreen mode
-  StatusBar.setHidden(true);
+  // Pastikan status bar terlihat agar tidak menutupi notch atau konten di Android/iOS
+  StatusBar.setHidden(false);
+  StatusBar.setBarStyle('light-content');
+  if (Platform.OS === 'android') {
+    StatusBar.setBackgroundColor('#1E293B'); // Slate 800 (cocok dengan tema header app)
+    StatusBar.setTranslucent(false);
+  }
 
   // Tema Gen Z: Dark Mode dengan gradasi ungu dan cyan neon
   const primaryColor = '#8B5CF6'; // Violet

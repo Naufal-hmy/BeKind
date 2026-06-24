@@ -126,7 +126,7 @@ BEGIN
     COALESCE(new.raw_user_meta_data->>'username', 'peka_' || substring(gen_random_uuid()::text from 1 for 6)),
     150,
     'Peka-Beginner',
-    'https://api.dicebear.com/7.x/pixel-art/svg?seed=' || new.id::text
+    'https://api.dicebear.com/7.x/pixel-art/png?seed=' || new.id::text
   );
   RETURN NEW;
 END;

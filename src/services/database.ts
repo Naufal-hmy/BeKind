@@ -60,7 +60,7 @@ const INITIAL_PROFILE = {
   username: 'skylar_peka',
   aura_points: 150,
   level: 'Peka-Beginner',
-  avatar_url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=skylar',
+  avatar_url: 'https://api.dicebear.com/7.x/pixel-art/png?seed=skylar',
 };
 
 const INITIAL_SCHEDULES = [
@@ -112,17 +112,18 @@ export const dbService = {
       const data = await AsyncStorage.getItem('@profile');
       return data ? JSON.parse(data) : INITIAL_PROFILE;
     } else {
+      const { data: userData, error: userError } = await supabase!.auth.getUser();
+      if (userError || !userData.user) throw new Error('User tidak terautentikasi');
+      
       const { data, error } = await supabase!
         .from('profiles')
         .select('*')
+        .eq('id', userData.user.id)
         .single();
       
       if (error) {
         if (error.code === 'PGRST116') {
           // Buat profil default jika belum ada di database
-          const { data: userData, error: userError } = await supabase!.auth.getUser();
-          if (userError || !userData.user) throw new Error('User tidak terautentikasi');
-          
           const userId = userData.user.id;
           const fallbackName = userData.user.user_metadata?.name || 'Bestie Peka';
           const fallbackUsername = userData.user.user_metadata?.username || `peka_${userId.substring(0, 6)}`;
@@ -133,7 +134,7 @@ export const dbService = {
             username: fallbackUsername,
             aura_points: 150,
             level: 'Peka-Beginner',
-            avatar_url: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${userId}`,
+            avatar_url: `https://api.dicebear.com/7.x/pixel-art/png?seed=${userId}`,
           };
           
           const { data: insertedData, error: insertError } = await supabase!
@@ -194,15 +195,41 @@ export const dbService = {
     }
   },
 
+  async updateProfileAvatar(avatarUrl: string) {
+    if (isDemoMode) {
+      const profileStr = await AsyncStorage.getItem('@profile');
+      const profile = profileStr ? JSON.parse(profileStr) : { ...INITIAL_PROFILE };
+      profile.avatar_url = avatarUrl;
+      await AsyncStorage.setItem('@profile', JSON.stringify(profile));
+      return profile;
+    } else {
+      const { data: userData, error: userError } = await supabase!.auth.getUser();
+      if (userError || !userData.user) throw new Error('User tidak terautentikasi');
+      
+      const { data, error } = await supabase!
+        .from('profiles')
+        .update({ avatar_url: avatarUrl })
+        .eq('id', userData.user.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+  },
+
   // === SCHEDULES ===
   async getSchedules() {
     if (isDemoMode) {
       const data = await AsyncStorage.getItem('@schedules');
       return data ? JSON.parse(data) : INITIAL_SCHEDULES;
     } else {
+      const { data: userData } = await supabase!.auth.getUser();
+      const userId = userData?.user?.id;
+      
       const { data, error } = await supabase!
         .from('schedules')
         .select('*')
+        .eq('user_id', userId || '')
         .order('start_time', { ascending: true });
       if (error) throw error;
       return data;
@@ -337,7 +364,7 @@ export const dbService = {
     } else {
       const { data, error } = await supabase!
         .from('suggestions')
-        .select('*, mission:mission_id(*)')
+        .select('*, mission:missions(*)')
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -389,7 +416,7 @@ export const dbService = {
           free_end_time: freeEndTime,
           status: 'pending'
         }])
-        .select('*, mission:mission_id(*)')
+        .select('*, mission:missions(*)')
         .single();
       if (error) throw error;
       return data;
@@ -426,7 +453,7 @@ export const dbService = {
     } else {
       const { data, error } = await supabase!
         .from('completed_missions')
-        .select('*, mission:mission_id(*)')
+        .select('*, mission:missions(*)')
         .order('completed_at', { ascending: false });
       if (error) throw error;
       return data;
@@ -471,7 +498,7 @@ export const dbService = {
           photo_url: photoUri,
           points_gained: auraPoints
         }])
-        .select('*, mission:mission_id(*)')
+        .select('*, mission:missions(*)')
         .single();
       if (error) throw error;
 
@@ -502,7 +529,7 @@ export const dbService = {
             // Tarik data relasi misinya juga
             const { data, error } = await supabase!
               .from('suggestions')
-              .select('*, mission:mission_id(*)')
+              .select('*, mission:missions(*)')
               .eq('id', payload.new.id)
               .single();
             if (!error && data) {

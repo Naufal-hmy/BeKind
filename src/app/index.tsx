@@ -78,7 +78,7 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" backgroundColor="#0F172A" translucent={false} />
 
       {/* Glow Background Elements */}
       <View style={styles.glowCyan} />
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 35,
     marginBottom: 25,
   },
   headerTitle: {

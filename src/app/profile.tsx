@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   FlatList,
   TextInput,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -43,7 +44,7 @@ export default function ProfileScreen() {
     username: 'bestie_peka',
     aura_points: 0,
     level: 'Peka-Beginner',
-    avatar_url: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=skylar',
+    avatar_url: 'https://api.dicebear.com/7.x/pixel-art/png?seed=skylar',
   });
   const [history, setHistory] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -96,6 +97,57 @@ export default function ProfileScreen() {
     }
     return item;
   }).sort((a, b) => b.points - a.points);
+
+  const handleChangeAvatar = async () => {
+    Alert.alert(
+      'Ubah Foto Profil',
+      'Pilih gambar dari galeri HP atau reset ke default:',
+      [
+        {
+          text: 'Pilih dari Galeri',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Izin Ditolak', 'Aplikasi butuh izin galeri untuk memilih foto profil!');
+              return;
+            }
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.7,
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+              const selectedUri = result.assets[0].uri;
+              try {
+                const updatedProf = await dbService.updateProfileAvatar(selectedUri);
+                setProfile(updatedProf);
+                Alert.alert('Sukses', 'Foto profil berhasil diperbarui!');
+              } catch (err: any) {
+                console.error(err);
+                Alert.alert('Gagal', 'Gagal memperbarui foto profil');
+              }
+            }
+          }
+        },
+        {
+          text: 'Reset ke Default',
+          onPress: async () => {
+            try {
+              const defaultAvatar = `https://api.dicebear.com/7.x/fun-emoji/png?seed=${profile.name}`;
+              const updatedProf = await dbService.updateProfileAvatar(defaultAvatar);
+              setProfile(updatedProf);
+              Alert.alert('Sukses', 'Foto profil di-reset ke default');
+            } catch (err) {
+              Alert.alert('Gagal', 'Gagal mereset foto profil');
+            }
+          }
+        },
+        { text: 'Batal', style: 'cancel' }
+      ]
+    );
+  };
 
   // Ambil Bukti Kebaikan (Buka Kamera Native / Library)
   const handleOpenNativeCamera = async () => {
@@ -406,6 +458,7 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#0F172A" translucent={false} />
       {/* Jika view camera aktif, render full overlay */}
       {showCameraView && renderMockCameraView()}
 
@@ -418,13 +471,16 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Profile Card Header */}
         <View style={styles.profileHeader}>
-          <View style={styles.avatarContainer}>
+          <TouchableOpacity style={styles.avatarContainer} onPress={handleChangeAvatar}>
             <View style={styles.avatarBorder} />
             <Image 
-              source={{ uri: `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${profile.name}` }} 
+              source={{ uri: profile.avatar_url || `https://api.dicebear.com/7.x/fun-emoji/png?seed=${profile.name}` }} 
               style={styles.avatar} 
             />
-          </View>
+            <View style={styles.avatarEditBadge}>
+              <Ionicons name="camera" size={12} color="#0F172A" />
+            </View>
+          </TouchableOpacity>
           
           <Text style={styles.profileName}>{profile.name}</Text>
           <Text style={styles.profileUsername}>@{profile.username}</Text>
@@ -572,7 +628,7 @@ const styles = StyleSheet.create({
   },
   profileHeader: {
     alignItems: 'center',
-    marginTop: 15,
+    marginTop: 35,
     marginBottom: 25,
   },
   avatarContainer: {
@@ -595,6 +651,19 @@ const styles = StyleSheet.create({
     height: 78,
     borderRadius: 39,
     backgroundColor: '#1E293B',
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#22D3EE',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#0F172A',
   },
   profileName: {
     fontSize: 20,

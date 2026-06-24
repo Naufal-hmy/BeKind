@@ -8,6 +8,7 @@ import {
   Platform,
   Alert,
   Dimensions,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useKindnessAgent } from '@/context/AgentContext';
@@ -231,6 +232,7 @@ export default function MapScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#1E293B" translucent={false} />
       <View style={styles.header}>
         <View style={styles.headerTextContainer}>
           <Text style={styles.headerTitle}>Peta Peka</Text>
@@ -320,7 +322,8 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingTop: 30,
+    paddingBottom: 15,
     backgroundColor: '#1E293B',
     borderBottomWidth: 1,
     borderBottomColor: '#334155',
