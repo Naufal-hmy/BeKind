@@ -26,8 +26,8 @@ interface AgentContextType {
 
 const AgentContext = createContext<AgentContextType | undefined>(undefined);
 
-// Koordinat Default (Gedung Sate Bandung) jika GPS mati/emulator
-const MOCK_COORDS = { latitude: -6.9024, longitude: 107.6186 };
+// Koordinat Default (Jakarta Pusat) jika GPS mati/emulator
+const MOCK_COORDS = { latitude: -6.1865, longitude: 106.8222 };
 
 export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -60,12 +60,12 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 longitude: lastLoc.coords.longitude,
               });
             } else {
-              console.log('Tidak ada lokasi terakhir yang diketahui, menggunakan koordinat default (Bandung)');
+              console.log('Tidak ada lokasi terakhir yang diketahui, menggunakan koordinat default (Jakarta Pusat)');
               setCurrentLocation(MOCK_COORDS);
             }
           }
         } else {
-          // Fallback ke Gedung Sate jika tidak diberi izin
+          // Fallback ke Jakarta Pusat jika tidak diberi izin
           setCurrentLocation(MOCK_COORDS);
         }
 
@@ -208,7 +208,7 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       // c. Cari Misi Terdekat (Radius < 5km)
-      const missions = await dbService.getMissions();
+      const missions = await dbService.getMissions(loc || undefined);
       const nearbyMissions = missions.filter((mission: any) => {
         const dist = getDistance(loc!.latitude, loc!.longitude, mission.latitude, mission.longitude);
         return dist <= 5.0; // 5 km
@@ -249,10 +249,17 @@ export const AgentProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsScanning(true);
     try {
       let loc = currentLocation || MOCK_COORDS;
-      const missions = await dbService.getMissions();
+      const missions = await dbService.getMissions(loc);
       
-      // Ambil acak satu misi
-      const randomMission = missions[Math.floor(Math.random() * missions.length)];
+      // Ambil misi terdekat (radius < 10km) untuk disimulasikan
+      const nearbyMissions = missions.filter((m: any) => {
+        if (m.type === 'personal') return false;
+        const d = getDistance(loc.latitude, loc.longitude, m.latitude, m.longitude);
+        return d <= 10.0;
+      });
+      
+      const targetMissions = nearbyMissions.length > 0 ? nearbyMissions : missions;
+      const randomMission = targetMissions[Math.floor(Math.random() * targetMissions.length)];
       
       // Ambil celah simulasi
       const now = new Date();

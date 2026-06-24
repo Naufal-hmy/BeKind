@@ -1,9 +1,3 @@
-<<<<<<< HEAD
-import { SharedLogoutButton, SharedProfileHeader } from '@/components/SharedProfileHeader';
-import { useKindnessAgent } from '@/context/AgentContext';
-import { dbService, isDemoMode } from '@/services/database';
-import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -21,30 +15,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-=======
-import React, { useState, useEffect } from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  Image,
-  Alert,
-  Platform,
-  ActivityIndicator,
-  FlatList,
-  TextInput,
-  StatusBar,
-  DevSettings,
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { dbService, isDemoMode } from '@/services/database';
 import { useKindnessAgent } from '@/context/AgentContext';
 import { SharedProfileHeader, SharedLogoutButton } from '@/components/SharedProfileHeader';
->>>>>>> 30fc53d1095abe0e6781ec7cdf9bbf2e8c2afaf6
 
 // Papan Peringkat Mock Gen Z
 const LEADERBOARD = [
@@ -131,26 +106,16 @@ export default function ProfileScreen() {
 
   const handleSaveProfile = async () => {
     if (!editName.trim() || !editUsername.trim()) {
-<<<<<<< HEAD
-      Alert.alert('Eits', 'Nama dan username wajib diisi ya!');
-=======
       Alert.alert('Eits', 'Nama dan username wajib diisi, cuy!');
->>>>>>> 30fc53d1095abe0e6781ec7cdf9bbf2e8c2afaf6
       return;
     }
     try {
       const updated = await dbService.updateProfileInfo(editName, editUsername);
       setProfile(updated);
       setShowEditProfileModal(false);
-<<<<<<< HEAD
-      Alert.alert('Bagus', 'Profil Anda berhasil diperbarui.');
-    } catch (err: any) {
-      Alert.alert('Gagal', err.message || 'Maaf,Gagal memperbarui profil.');
-=======
       Alert.alert('Mantap', 'Profil berhasil diperbarui.');
     } catch (err: any) {
       Alert.alert('Gagal', err.message || 'Gagal memperbarui profil.');
->>>>>>> 30fc53d1095abe0e6781ec7cdf9bbf2e8c2afaf6
     }
   };
 
@@ -1358,6 +1323,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
+    paddingTop: 20,
     paddingBottom: 40,
   },
   profileHeader: {

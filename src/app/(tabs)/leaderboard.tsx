@@ -163,7 +163,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingTop: 30,
+    paddingTop: 55,
   },
   glowViolet: {
     position: 'absolute',

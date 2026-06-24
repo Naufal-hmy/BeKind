@@ -27,6 +27,7 @@ export const supabase = !isDemoMode ? createClient(supabaseUrl, supabaseAnonKey)
 
 // Mock Data Awal untuk Demo Mode
 const INITIAL_MISSIONS = [
+  // === BANDUNG MISSIONS ===
   {
     id: 'm1',
     title: 'Kasih Makan Kucing Jalanan',
@@ -66,6 +67,47 @@ const INITIAL_MISSIONS = [
     longitude: 107.6198,
     aura_points: 40,
     location_name: 'Sekitar Lapangan Saparua',
+  },
+  // === JAKARTA PUSAT (JAKPUS) MISSIONS ===
+  {
+    id: 'm5_jakpus',
+    title: 'Bagi Makanan di Monas',
+    description: 'Beli beberapa botol air dingin dan roti, bagikan ke petugas kebersihan atau pengunjung yang kelelahan di sekitar Monas.',
+    category: 'Sosial',
+    latitude: -6.1754,
+    longitude: 106.8272,
+    aura_points: 60,
+    location_name: 'Monumen Nasional (Monas)',
+  },
+  {
+    id: 'm6_jakpus',
+    title: 'Kasih Makan Kucing Liar Menteng',
+    description: 'Ada beberapa kucing liar di sekitar Taman Suropati. Berikan makanan kucing basah atau kering ke mereka.',
+    category: 'Hewan',
+    latitude: -6.2008,
+    longitude: 106.8326,
+    aura_points: 50,
+    location_name: 'Taman Suropati Menteng',
+  },
+  {
+    id: 'm7_jakpus',
+    title: 'Operasi Bersih Lapangan Banteng',
+    description: 'Pungut sampah plastik/botol bekas yang berserakan di area jogging track Lapangan Banteng agar tetap bersih.',
+    category: 'Lingkungan',
+    latitude: -6.1706,
+    longitude: 106.8344,
+    aura_points: 70,
+    location_name: 'Lapangan Banteng',
+  },
+  {
+    id: 'm8_jakpus',
+    title: 'Beli Cemilan Pedagang Keliling HI',
+    description: 'Beli dagangan pedagang cilok/gerobak tua di sekitar area Bundaran HI untuk membantu melariskan jualan mereka.',
+    category: 'Sosial',
+    latitude: -6.1950,
+    longitude: 106.8230,
+    aura_points: 80,
+    location_name: 'Bundaran HI (Depan Grand Indonesia)',
   },
 ];
 
@@ -266,9 +308,14 @@ export const dbService = {
       await AsyncStorage.setItem(key, JSON.stringify(profile));
       return profile;
     } else {
+      const { data: userData, error: userError } = await supabase!.auth.getUser();
+      if (userError || !userData.user) throw new Error('User tidak terautentikasi');
+      const userId = userData.user.id;
+
       const { data: profile, error: fetchErr } = await supabase!
         .from('profiles')
         .select('aura_points')
+        .eq('id', userId)
         .single();
       if (fetchErr) throw fetchErr;
 
@@ -281,6 +328,7 @@ export const dbService = {
       const { data, error } = await supabase!
         .from('profiles')
         .update({ aura_points: newPoints, level })
+        .eq('id', userId)
         .select()
         .single();
       if (error) throw error;
@@ -511,10 +559,16 @@ export const dbService = {
               is_event_mission: m.is_event_mission
             })));
           
-          if (!insertErr) {
-            const { data: refetched } = await supabase!.from('missions').select('*');
-            if (refetched) return refetched;
+          if (insertErr) {
+            console.warn("Gagal seeding misi ke database (menggunakan fallback lokal untuk demo):", insertErr.message);
+            return [...missions, ...seededMissions];
           }
+          const { data: refetched, error: refetchErr } = await supabase!.from('missions').select('*');
+          if (refetchErr) {
+            console.warn("Gagal mengambil ulang misi dari database, menggunakan fallback lokal:", refetchErr.message);
+            return [...missions, ...seededMissions];
+          }
+          if (refetched) return refetched;
         }
       }
     }
@@ -1060,44 +1114,7 @@ export const dbService = {
     }
   },
 
-  async getAllProfiles() {
-    if (isDemoMode) {
-      const usersStr = await AsyncStorage.getItem('@registered_users');
-      const users = usersStr ? JSON.parse(usersStr) : [];
-      
-      const adminProfileStr = await AsyncStorage.getItem('@profile_admin');
-      const adminProfile = adminProfileStr ? JSON.parse(adminProfileStr) : null;
-      
-      const all: any[] = [];
-      if (adminProfile) all.push(adminProfile);
-      
-      for (const u of users) {
-        const key = `@profile_${u.email.replace(/[^a-zA-Z0-9]/g, '_')}`;
-        const pStr = await AsyncStorage.getItem(key);
-        if (pStr) {
-          all.push(JSON.parse(pStr));
-        } else {
-          all.push({
-            name: u.name,
-            username: u.username,
-            role: u.role || 'user',
-            email: u.email,
-            aura_points: 150,
-            level: 'Peka-Beginner',
-            avatar_url: `https://api.dicebear.com/7.x/pixel-art/png?seed=${u.username}`,
-          });
-        }
-      }
-      return all;
-    } else {
-      const { data, error } = await supabase!
-        .from('profiles')
-        .select('*')
-        .order('aura_points', { ascending: false });
-      if (error) throw error;
-      return data;
-    }
-  },
+
 
   async signOut() {
     if (isDemoMode) {

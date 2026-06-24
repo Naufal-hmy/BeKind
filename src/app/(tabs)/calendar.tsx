@@ -73,6 +73,32 @@ export default function CalendarScreen() {
     return `${y}-${m}-${d}`;
   };
 
+  const checkScheduleStatus = (item: any) => {
+    const now = new Date();
+    const todayStr = formatDateString(now);
+    const itemDateStr = item.date || todayStr;
+    
+    const [startH, startM] = item.start_time.split(':').map(Number);
+    const [endH, endM] = item.end_time.split(':').map(Number);
+    
+    const itemStart = new Date(itemDateStr);
+    itemStart.setHours(startH, startM, 0, 0);
+    
+    const itemEnd = new Date(itemDateStr);
+    itemEnd.setHours(endH, endM, 0, 0);
+    
+    if (now.getTime() > itemEnd.getTime()) {
+      return 'expired';
+    }
+    
+    const diffMs = itemEnd.getTime() - now.getTime();
+    if (diffMs > 0 && diffMs <= 30 * 60 * 1000) {
+      return 'expiring_soon';
+    }
+    
+    return 'active';
+  };
+
   // Filter jadwal untuk tanggal terpilih
   const getSchedulesForSelectedDate = () => {
     const selectedStr = formatDateString(selectedDate);
@@ -414,28 +440,50 @@ export default function CalendarScreen() {
           </Text>
           
           {activeDaySchedules.length > 0 ? (
-            activeDaySchedules.map((item) => (
-              <View key={item.id} style={[styles.scheduleCard, { borderLeftColor: TYPE_COLORS[item.type || 'busy'], borderLeftWidth: 4 }]}>
-                <View style={styles.scheduleInfo}>
-                  <View style={[styles.timeIconContainer, { backgroundColor: `${TYPE_COLORS[item.type || 'busy']}1A` }]}>
-                    <Ionicons name="time" size={18} color={TYPE_COLORS[item.type || 'busy']} />
-                  </View>
-                  <View style={styles.scheduleDetails}>
-                    <Text style={styles.scheduleTitle}>{item.title}</Text>
-                    <Text style={styles.scheduleTime}>
-                      {item.start_time} - {item.end_time} • <Text style={{ color: TYPE_COLORS[item.type || 'busy'], fontWeight: '700' }}>{TYPE_NAMES[item.type || 'busy']}</Text>
-                    </Text>
-                  </View>
-                </View>
-                
-                <TouchableOpacity
-                  style={styles.deleteBtn}
-                  onPress={() => handleDeleteSchedule(item.id, item.title)}
+            activeDaySchedules.map((item) => {
+              const status = checkScheduleStatus(item);
+              return (
+                <View 
+                  key={item.id} 
+                  style={[
+                    styles.scheduleCard, 
+                    { borderLeftColor: TYPE_COLORS[item.type || 'busy'], borderLeftWidth: 4 },
+                    status === 'expired' && { opacity: 0.55 }
+                  ]}
                 >
-                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                </TouchableOpacity>
-              </View>
-            ))
+                  <View style={styles.scheduleInfo}>
+                    <View style={[styles.timeIconContainer, { backgroundColor: `${TYPE_COLORS[item.type || 'busy']}1A` }]}>
+                      <Ionicons name="time" size={18} color={TYPE_COLORS[item.type || 'busy']} />
+                    </View>
+                    <View style={styles.scheduleDetails}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <Text style={styles.scheduleTitle}>{item.title}</Text>
+                        {status === 'expired' && (
+                          <View style={styles.expiredBadge}>
+                            <Text style={styles.expiredBadgeText}>⏳ Kadaluarsa</Text>
+                          </View>
+                        )}
+                        {status === 'expiring_soon' && (
+                          <View style={styles.expiringSoonBadge}>
+                            <Text style={styles.expiringSoonBadgeText}>⚠️ Hampir Selesai</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.scheduleTime}>
+                        {item.start_time} - {item.end_time} • <Text style={{ color: TYPE_COLORS[item.type || 'busy'], fontWeight: '700' }}>{TYPE_NAMES[item.type || 'busy']}</Text>
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => handleDeleteSchedule(item.id, item.title)}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              );
+            })
           ) : (
             <View style={styles.emptyCard}>
               <Ionicons name="calendar-outline" size={40} color="#475569" style={styles.emptyIcon} />
@@ -480,7 +528,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 30,
+    paddingTop: 55,
     paddingBottom: 15,
     backgroundColor: '#1E293B',
     borderBottomWidth: 1,
@@ -809,5 +857,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     flex: 1,
+  },
+  expiredBadge: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  expiredBadgeText: {
+    color: '#F87171',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  expiringSoonBadge: {
+    backgroundColor: 'rgba(250, 204, 21, 0.15)',
+    borderColor: 'rgba(250, 204, 21, 0.3)',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  expiringSoonBadgeText: {
+    color: '#FACC15',
+    fontSize: 9,
+    fontWeight: '700',
   },
 });

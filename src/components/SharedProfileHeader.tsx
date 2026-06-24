@@ -225,7 +225,7 @@ export function SharedLogoutButton() {
 const styles = StyleSheet.create({
   profileHeader: {
     alignItems: 'center',
-    marginTop: 35,
+    marginTop: 55,
     marginBottom: 25,
   },
   avatarContainer: {
