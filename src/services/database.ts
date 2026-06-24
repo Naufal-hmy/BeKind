@@ -620,6 +620,10 @@ export const dbService = {
       await AsyncStorage.setItem('@missions', JSON.stringify(missions));
       return newMission;
     } else {
+      const { data: userData, error: userError } = await supabase!.auth.getUser();
+      if (userError || !userData.user) throw new Error('User tidak terautentikasi');
+      const userId = userData.user.id;
+
       const { data, error } = await supabase!
         .from('missions')
         .insert([{ 
@@ -635,7 +639,8 @@ export const dbService = {
           payment_method: paymentMethod,
           payment_status: paymentStatus,
           is_event_mission: isEventMission,
-          event_name: eventName
+          event_name: eventName,
+          creator_id: userId
         }])
         .select()
         .single();

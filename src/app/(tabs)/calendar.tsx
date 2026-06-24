@@ -47,8 +47,12 @@ export default function CalendarScreen() {
 
   // Form States
   const [title, setTitle] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
+  const [startHour, setStartHour] = useState(8);
+  const [startMinute, setStartMinute] = useState(0);
+  const [startAmPm, setStartAmPm] = useState<'AM' | 'PM'>('AM');
+  const [endHour, setEndHour] = useState(10);
+  const [endMinute, setEndMinute] = useState(30);
+  const [endAmPm, setEndAmPm] = useState<'AM' | 'PM'>('AM');
   const [freq, setFreq] = useState<'once' | 'monthly'>('once');
   const [selectedType, setSelectedType] = useState<'busy' | 'personal' | 'public' | 'event'>('busy');
 
@@ -81,10 +85,13 @@ export default function CalendarScreen() {
     const [startH, startM] = item.start_time.split(':').map(Number);
     const [endH, endM] = item.end_time.split(':').map(Number);
     
-    const itemStart = new Date(itemDateStr);
+    // Parse tanggal secara lokal berdasarkan komponen tahun, bulan, hari
+    const [y, m, d] = itemDateStr.split('-').map(Number);
+    
+    const itemStart = new Date(y, m - 1, d);
     itemStart.setHours(startH, startM, 0, 0);
     
-    const itemEnd = new Date(itemDateStr);
+    const itemEnd = new Date(y, m - 1, d);
     itemEnd.setHours(endH, endM, 0, 0);
     
     if (now.getTime() > itemEnd.getTime()) {
@@ -133,34 +140,44 @@ export default function CalendarScreen() {
     return Array.from(new Set(daySchedules.map((s: any) => s.type || 'busy')));
   };
 
+  const get24hTime = (hour: number, minute: number, ampm: 'AM' | 'PM') => {
+    let h = hour;
+    if (ampm === 'PM' && h !== 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    const hStr = String(h).padStart(2, '0');
+    const mStr = String(minute).padStart(2, '0');
+    return `${hStr}:${mStr}`;
+  };
+
   // Simpan jadwal
   const handleAddSchedule = async () => {
-    if (!title.trim() || !startTime.trim() || !endTime.trim()) {
+    if (!title.trim()) {
       Alert.alert('Eits', 'Tolong isi semua bidangnya dulu, cuy!');
       return;
     }
 
-    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
-    if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
-      Alert.alert('Format Salah', 'Waktu harus menggunakan format 24 jam (misal: 08:30 atau 14:00)!');
-      return;
-    }
+    const calculatedStart = get24hTime(startHour, startMinute, startAmPm);
+    const calculatedEnd = get24hTime(endHour, endMinute, endAmPm);
 
-    if (startTime >= endTime) {
+    if (calculatedStart >= calculatedEnd) {
       Alert.alert('Waktu Terbalik', 'Waktu mulai harus lebih awal dibanding waktu selesai!');
       return;
     }
 
     try {
       const dateStr = formatDateString(selectedDate);
-      await dbService.addSchedule(title, startTime, endTime, dateStr, freq, selectedType);
+      await dbService.addSchedule(title, calculatedStart, calculatedEnd, dateStr, freq, selectedType);
       
       Alert.alert('Mantap', `Jadwal "${title}" berhasil disimpan di kalender.`);
       
       // Reset form
       setTitle('');
-      setStartTime('');
-      setEndTime('');
+      setStartHour(8);
+      setStartMinute(0);
+      setStartAmPm('AM');
+      setEndHour(10);
+      setEndMinute(30);
+      setEndAmPm('AM');
       setFreq('once');
       setSelectedType('busy');
       setIsAdding(false);
@@ -359,29 +376,91 @@ export default function CalendarScreen() {
                 onChangeText={setTitle}
               />
 
-              <View style={styles.rowInputs}>
-                <View style={styles.halfInputContainer}>
-                  <Text style={styles.inputLabel}>Mulai (HH:MM)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="08:00"
-                    placeholderTextColor="#64748B"
-                    value={startTime}
-                    onChangeText={setStartTime}
-                    maxLength={5}
-                  />
+              {/* Waktu Mulai Picker */}
+              <Text style={styles.inputLabel}>Waktu Mulai</Text>
+              <View style={styles.timeSelectorRowInline}>
+                {/* Hour */}
+                <View style={styles.spinBox}>
+                  <TouchableOpacity onPress={() => setStartHour(h => h === 1 ? 12 : h - 1)} style={styles.spinBtn}>
+                    <Ionicons name="chevron-down" size={16} color="#34D399" />
+                  </TouchableOpacity>
+                  <Text style={styles.spinVal}>{String(startHour).padStart(2, '0')}</Text>
+                  <TouchableOpacity onPress={() => setStartHour(h => h === 12 ? 1 : h + 1)} style={styles.spinBtn}>
+                    <Ionicons name="chevron-up" size={16} color="#34D399" />
+                  </TouchableOpacity>
+                </View>
+                
+                <Text style={styles.timeDivider}>:</Text>
+
+                {/* Minute */}
+                <View style={styles.spinBox}>
+                  <TouchableOpacity onPress={() => setStartMinute(m => m === 0 ? 55 : m - 5)} style={styles.spinBtn}>
+                    <Ionicons name="chevron-down" size={16} color="#34D399" />
+                  </TouchableOpacity>
+                  <Text style={styles.spinVal}>{String(startMinute).padStart(2, '0')}</Text>
+                  <TouchableOpacity onPress={() => setStartMinute(m => m === 55 ? 0 : m + 5)} style={styles.spinBtn}>
+                    <Ionicons name="chevron-up" size={16} color="#34D399" />
+                  </TouchableOpacity>
                 </View>
 
-                <View style={styles.halfInputContainer}>
-                  <Text style={styles.inputLabel}>Selesai (HH:MM)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="10:30"
-                    placeholderTextColor="#64748B"
-                    value={endTime}
-                    onChangeText={setEndTime}
-                    maxLength={5}
-                  />
+                {/* AM/PM */}
+                <View style={styles.ampmContainer}>
+                  <TouchableOpacity 
+                    style={[styles.ampmBtn, startAmPm === 'AM' && styles.ampmBtnActive]}
+                    onPress={() => setStartAmPm('AM')}
+                  >
+                    <Text style={[styles.ampmText, startAmPm === 'AM' && styles.ampmTextActive]}>AM</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.ampmBtn, startAmPm === 'PM' && styles.ampmBtnActive]}
+                    onPress={() => setStartAmPm('PM')}
+                  >
+                    <Text style={[styles.ampmText, startAmPm === 'PM' && styles.ampmTextActive]}>PM</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Waktu Selesai Picker */}
+              <Text style={styles.inputLabel}>Waktu Selesai</Text>
+              <View style={styles.timeSelectorRowInline}>
+                {/* Hour */}
+                <View style={styles.spinBox}>
+                  <TouchableOpacity onPress={() => setEndHour(h => h === 1 ? 12 : h - 1)} style={styles.spinBtn}>
+                    <Ionicons name="chevron-down" size={16} color="#34D399" />
+                  </TouchableOpacity>
+                  <Text style={styles.spinVal}>{String(endHour).padStart(2, '0')}</Text>
+                  <TouchableOpacity onPress={() => setEndHour(h => h === 12 ? 1 : h + 1)} style={styles.spinBtn}>
+                    <Ionicons name="chevron-up" size={16} color="#34D399" />
+                  </TouchableOpacity>
+                </View>
+                
+                <Text style={styles.timeDivider}>:</Text>
+
+                {/* Minute */}
+                <View style={styles.spinBox}>
+                  <TouchableOpacity onPress={() => setEndMinute(m => m === 0 ? 55 : m - 5)} style={styles.spinBtn}>
+                    <Ionicons name="chevron-down" size={16} color="#34D399" />
+                  </TouchableOpacity>
+                  <Text style={styles.spinVal}>{String(endMinute).padStart(2, '0')}</Text>
+                  <TouchableOpacity onPress={() => setEndMinute(m => m === 55 ? 0 : m + 5)} style={styles.spinBtn}>
+                    <Ionicons name="chevron-up" size={16} color="#34D399" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* AM/PM */}
+                <View style={styles.ampmContainer}>
+                  <TouchableOpacity 
+                    style={[styles.ampmBtn, endAmPm === 'AM' && styles.ampmBtnActive]}
+                    onPress={() => setEndAmPm('AM')}
+                  >
+                    <Text style={[styles.ampmText, endAmPm === 'AM' && styles.ampmTextActive]}>AM</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.ampmBtn, endAmPm === 'PM' && styles.ampmBtnActive]}
+                    onPress={() => setEndAmPm('PM')}
+                  >
+                    <Text style={[styles.ampmText, endAmPm === 'PM' && styles.ampmTextActive]}>PM</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -883,5 +962,67 @@ const styles = StyleSheet.create({
     color: '#FACC15',
     fontSize: 9,
     fontWeight: '700',
+  },
+  timeSelectorRowInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 8,
+  },
+  spinBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    height: 48,
+    width: 90,
+    justifyContent: 'space-between',
+  },
+  spinBtn: {
+    padding: 6,
+  },
+  spinVal: {
+    color: '#F8FAFC',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  timeDivider: {
+    color: '#94A3B8',
+    fontSize: 20,
+    fontWeight: '800',
+    paddingHorizontal: 2,
+  },
+  ampmContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 12,
+    padding: 2,
+    height: 48,
+    alignItems: 'center',
+  },
+  ampmBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100%',
+  },
+  ampmBtnActive: {
+    backgroundColor: '#34D399',
+  },
+  ampmText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  ampmTextActive: {
+    color: '#0F172A',
   },
 });
