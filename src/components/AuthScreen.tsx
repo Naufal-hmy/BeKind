@@ -23,6 +23,7 @@ export function AuthScreen() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -36,6 +37,7 @@ export function AuthScreen() {
 
     setLoading(true);
     setErrorMsg('');
+    setSuccessMsg('');
 
     try {
       if (isSignUp) {
@@ -54,7 +56,9 @@ export function AuthScreen() {
         
         // Supabase biasanya mengirim email konfirmasi, beri tahu user
         if (data.session === null) {
-          setErrorMsg('Pendaftaran berhasil! Silakan cek email kamu untuk konfirmasi akun.');
+          setSuccessMsg('Pendaftaran berhasil! Silakan cek email kamu untuk konfirmasi akun.');
+        } else {
+          setSuccessMsg('Pendaftaran berhasil! Kamu otomatis masuk.');
         }
       } else {
         // Sign In
@@ -97,6 +101,13 @@ export function AuthScreen() {
               <View style={styles.errorContainer}>
                 <Ionicons name="alert-circle-outline" size={18} color="#EF4444" />
                 <Text style={styles.errorText}>{errorMsg}</Text>
+              </View>
+            ) : null}
+
+            {successMsg ? (
+              <View style={styles.successContainer}>
+                <Ionicons name="checkmark-circle-outline" size={18} color="#10B981" />
+                <Text style={styles.successText}>{successMsg}</Text>
               </View>
             ) : null}
 
@@ -274,6 +285,22 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#FCA5A5',
+    fontSize: 13,
+    marginLeft: 8,
+    flex: 1,
+  },
+  successContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.2)',
+    marginBottom: 16,
+  },
+  successText: {
+    color: '#A7F3D0',
     fontSize: 13,
     marginLeft: 8,
     flex: 1,
