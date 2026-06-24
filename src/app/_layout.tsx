@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { useColorScheme, View, StyleSheet, Platform, ActivityIndicator, LogBox } from 'react-native';
+import { useColorScheme, View, StyleSheet, Platform, ActivityIndicator, LogBox, StatusBar } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +20,9 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
+
+  // Sembunyikan status bar (baterai, wifi, jam, dll) untuk fullscreen mode
+  StatusBar.setHidden(true);
 
   // Tema Gen Z: Dark Mode dengan gradasi ungu dan cyan neon
   const primaryColor = '#8B5CF6'; // Violet
