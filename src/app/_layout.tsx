@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import { useColorScheme, View, StyleSheet, Platform, ActivityIndicator, LogBox } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AgentProvider } from '@/context/AgentContext';
 import { supabase, isDemoMode } from '@/services/database';
 import { AuthScreen } from '@/components/AuthScreen';
@@ -18,6 +19,7 @@ LogBox.ignoreLogs([
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const insets = useSafeAreaInsets();
 
   // Tema Gen Z: Dark Mode dengan gradasi ungu dan cyan neon
   const primaryColor = '#8B5CF6'; // Violet
@@ -28,6 +30,10 @@ export default function RootLayout() {
 
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(!isDemoMode);
+
+  // Sesuaikan tinggi tab bar secara dinamis sesuai insets bottom (Android nav bar / iOS home bar)
+  const tabBarHeight = Platform.OS === 'web' ? 65 : 65 + insets.bottom;
+  const tabBarPaddingBottom = Platform.OS === 'web' ? 10 : 10 + insets.bottom;
 
   useEffect(() => {
     if (isDemoMode) return;
@@ -73,8 +79,8 @@ export default function RootLayout() {
             backgroundColor: '#1E293B', // Slate 800
             borderTopWidth: 1,
             borderTopColor: '#334155', // Slate 700
-            height: 65,
-            paddingBottom: 10,
+            height: tabBarHeight,
+            paddingBottom: tabBarPaddingBottom,
             paddingTop: 8,
             elevation: 8,
             shadowColor: '#000',
