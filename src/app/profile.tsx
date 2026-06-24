@@ -64,6 +64,32 @@ export default function ProfileScreen() {
   const [formAuraPoints, setFormAuraPoints] = useState('50');
   const [formLocationName, setFormLocationName] = useState('');
 
+  // States Perluasan Fitur Baru (Streaks, Creator, Verifikasi, Dispute, QRIS)
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [showRewardsModal, setShowRewardsModal] = useState(false);
+  const [showCreateMissionModal, setShowCreateMissionModal] = useState(false);
+  const [countdown, setCountdown] = useState('');
+  
+  // States Form Misi Baru
+  const [newMissionType, setNewMissionType] = useState<'personal' | 'public'>('personal');
+  const [newTitle, setNewTitle] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  const [newCategory, setNewCategory] = useState('Sosial');
+  const [newLocation, setNewLocation] = useState('');
+  const [newMode, setNewMode] = useState<'solo' | 'group' | 'community'>('solo');
+  const [newPoints, setNewPoints] = useState('50');
+  const [paymentMethod, setPaymentMethod] = useState<'points' | 'qris'>('points');
+  const [showQRISPaymentModal, setShowQRISPaymentModal] = useState(false);
+  const [qrisUrl, setQrisUrl] = useState('');
+  const [isCreatingMissionLoading, setIsCreatingMissionLoading] = useState(false);
+
+  // States Verifikasi & Sengketa CS
+  const [pendingVerifications, setPendingVerifications] = useState<any[]>([]);
+  const [showEOAdminPanel, setShowEOAdminPanel] = useState(false);
+  const [verificationTab, setVerificationTab] = useState<'public' | 'event'>('public');
+  const [disputingCompletion, setDisputingCompletion] = useState<any | null>(null);
+  const [disputeReason, setDisputeReason] = useState('');
+
   // Muat data profil & riwayat misi
   const loadData = async () => {
     try {
@@ -74,6 +100,13 @@ export default function ProfileScreen() {
       
       const missionsList = await dbService.getMissions();
       setAdminMissions(missionsList);
+
+      const leadData = await dbService.getLeaderboard();
+      setLeaderboard(leadData);
+
+      // Filter pending verifications
+      const pendingList = list.filter((c: any) => c.status === 'pending');
+      setPendingVerifications(pendingList);
     } catch (e) {
       console.error(e);
     }
@@ -86,17 +119,26 @@ export default function ProfileScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  // Update skor user di leaderboard mockup
-  const updatedLeaderboard = LEADERBOARD.map((item) => {
-    if (item.rank === 2) {
-      return {
-        ...item,
-        points: profile.aura_points,
-        level: profile.level.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, '').trim()
-      };
-    }
-    return item;
-  }).sort((a, b) => b.points - a.points);
+  useEffect(() => {
+    const updateCountdown = () => {
+      const now = new Date();
+      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      const diff = endOfMonth.getTime() - now.getTime();
+      if (diff <= 0) {
+        setCountdown('Periode Berakhir');
+        return;
+      }
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((diff / 1000 / 60) % 60);
+      const seconds = Math.floor((diff / 1000) % 60);
+      setCountdown(`${days}d ${hours}h ${minutes}m ${seconds}s`);
+    };
+
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleChangeAvatar = async () => {
     Alert.alert(
@@ -211,6 +253,162 @@ export default function ProfileScreen() {
     } catch (e) {
       console.error(e);
       Alert.alert('Gagal', 'Gagal memproses bukti kebaikan.');
+    }
+  };
+
+  const handlePublishMission = async () => {
+    if (!newTitle || !newDesc || !newLocation) {
+      Alert.alert('Error', 'Harap isi semua kolom wajib!');
+      return;
+    }
+    const pts = parseInt(newPoints) || 50;
+
+    if (newMissionType === 'personal') {
+      try {
+        setIsCreatingMissionLoading(true);
+        await dbService.addMission(
+          newTitle,
+          newDesc,
+          newCategory,
+          -6.9024,
+          107.6186,
+          0,
+          newLocation,
+          'personal',
+          newMode
+        );
+        Alert.alert('Sukses', 'Pengingat misi personal berhasil disimpan!');
+        setShowCreateMissionModal(false);
+        resetForm();
+        loadData();
+      } catch (err: any) {
+        Alert.alert('Gagal', err.message || 'Gagal menyimpan misi');
+      } finally {
+        setIsCreatingMissionLoading(false);
+      }
+    } else {
+      if (paymentMethod === 'points') {
+        if (profile.aura_points < 100) {
+          Alert.alert('Gagal', 'Aura Points kamu kurang dari 100! Kumpulkan poin atau bayar menggunakan QRIS.');
+          return;
+        }
+        try {
+          setIsCreatingMissionLoading(true);
+          await dbService.addMission(
+            newTitle,
+            newDesc,
+            newCategory,
+            -6.9024,
+            107.6186,
+            pts,
+            newLocation,
+            'public',
+            newMode,
+            'points',
+            'paid'
+          );
+          Alert.alert('Sukses', 'Misi publik berhasil dipublikasikan! Terpotong 100 Aura Points.');
+          setShowCreateMissionModal(false);
+          resetForm();
+          loadData();
+        } catch (err: any) {
+          Alert.alert('Gagal', err.message || 'Gagal menerbitkan misi');
+        } finally {
+          setIsCreatingMissionLoading(false);
+        }
+      } else {
+        const qrData = `bekind_pay_${newTitle.replace(/\s+/g, '_')}_${Date.now()}`;
+        setQrisUrl(`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrData)}`);
+        setShowQRISPaymentModal(true);
+      }
+    }
+  };
+
+  const handleQRISPaymentSuccess = async () => {
+    const pts = parseInt(newPoints) || 50;
+    try {
+      setIsCreatingMissionLoading(true);
+      await dbService.addMission(
+        newTitle,
+        newDesc,
+        newCategory,
+        -6.9024,
+        107.6186,
+        pts,
+        newLocation,
+        'public',
+        newMode,
+        'qris',
+        'paid'
+      );
+      Alert.alert('Sukses', 'Simulasi pembayaran QRIS berhasil! Misi publik telah diterbitkan.');
+      setShowQRISPaymentModal(false);
+      setShowCreateMissionModal(false);
+      resetForm();
+      loadData();
+    } catch (err: any) {
+      Alert.alert('Gagal', err.message || 'Gagal menerbitkan misi');
+    } finally {
+      setIsCreatingMissionLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setNewTitle('');
+    setNewDesc('');
+    setNewLocation('');
+    setNewPoints('50');
+    setNewCategory('Sosial');
+    setNewMode('solo');
+    setPaymentMethod('points');
+  };
+
+  const handleApproveCompletion = async (completedId: string) => {
+    try {
+      await dbService.approveCompletedMission(completedId);
+      Alert.alert('Sukses', 'Penyelesaian misi berhasil disetujui!');
+      loadData();
+    } catch (err: any) {
+      Alert.alert('Gagal', err.message || 'Gagal menyetujui penyelesaian');
+    }
+  };
+
+  const handleRejectCompletion = async (completedId: string) => {
+    Alert.alert(
+      'Tolak Pekerjaan',
+      'Apakah kamu yakin ingin menolak penyelesaian misi ini?',
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Tolak',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dbService.rejectCompletedMission(completedId);
+              Alert.alert('Sukses', 'Penyelesaian misi berhasil ditolak & dihapus.');
+              loadData();
+            } catch (err: any) {
+              Alert.alert('Gagal', err.message || 'Gagal menolak penyelesaian');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleDisputeReport = async () => {
+    if (!disputeReason.trim()) {
+      Alert.alert('Error', 'Harap isi alasan laporan sengketa!');
+      return;
+    }
+    try {
+      await dbService.reportDispute(disputingCompletion.id, disputeReason);
+      Alert.alert('Sukses', 'Laporan sengketa berhasil diajukan ke CS. Tim kami akan segera meninjau bukti.');
+      setDisputingCompletion(null);
+      setDisputeReason('');
+      loadData();
+    } catch (err: any) {
+      Alert.alert('Gagal', err.message || 'Gagal mengajukan sengketa');
     }
   };
 
@@ -465,6 +663,358 @@ export default function ProfileScreen() {
       {/* Jika panel admin aktif, render full overlay */}
       {showAdminPanel && renderAdminPanel()}
 
+      {/* Modal Hadiah Leaderboard */}
+      {showRewardsModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🏆 HADIAH BULANAN TOP 10</Text>
+              <TouchableOpacity onPress={() => setShowRewardsModal(false)}>
+                <Ionicons name="close" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.rewardIntro}>
+                Jadilah agen kebaikan paling aktif bulan ini dan dapatkan saldo e-wallet!
+              </Text>
+              <View style={styles.rewardList}>
+                <View style={styles.rewardItem}>
+                  <Text style={styles.rewardRank}>🥇 Juara 1</Text>
+                  <Text style={styles.rewardGift}>ShopeePay / Gopay Rp500.000</Text>
+                  <Text style={styles.rewardBadge}>+ Golden Profile Border</Text>
+                </View>
+                <View style={styles.rewardItem}>
+                  <Text style={styles.rewardRank}>🥈 Juara 2</Text>
+                  <Text style={styles.rewardGift}>ShopeePay / Gopay Rp300.000</Text>
+                  <Text style={styles.rewardBadge}>+ Silver Profile Border</Text>
+                </View>
+                <View style={styles.rewardItem}>
+                  <Text style={styles.rewardRank}>🥉 Juara 3</Text>
+                  <Text style={styles.rewardGift}>ShopeePay / Gopay Rp200.000</Text>
+                  <Text style={styles.rewardBadge}>+ Bronze Profile Border</Text>
+                </View>
+                <View style={styles.rewardItem}>
+                  <Text style={styles.rewardRank}>⭐ Peringkat 4 - 10</Text>
+                  <Text style={styles.rewardGift}>ShopeePay / Gopay Rp50.000</Text>
+                  <Text style={styles.rewardBadge}>Apresiasi Kontributor</Text>
+                </View>
+              </View>
+              <Text style={styles.rewardDisclaimer}>
+                Pemenang diumumkan setiap tanggal 1 awal bulan berdasarkan perolehan Aura Points. Poin bulanan akan di-reset setelah periode selesai.
+              </Text>
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* Modal Buat Misi Baru */}
+      {showCreateMissionModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>✨ BUAT MISI BARU</Text>
+              <TouchableOpacity onPress={() => setShowCreateMissionModal(false)}>
+                <Ionicons name="close" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={styles.formLabel}>Tipe Misi</Text>
+              <View style={styles.typeSelectorRow}>
+                <TouchableOpacity 
+                  style={[styles.typeBtn, newMissionType === 'personal' && styles.typeBtnActive]} 
+                  onPress={() => setNewMissionType('personal')}
+                >
+                  <Ionicons name="bookmark-outline" size={16} color={newMissionType === 'personal' ? '#22D3EE' : '#94A3B8'} />
+                  <Text style={[styles.typeBtnText, newMissionType === 'personal' && styles.typeBtnTextActive]}>Personal (Gratis)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.typeBtn, newMissionType === 'public' && styles.typeBtnActive]} 
+                  onPress={() => setNewMissionType('public')}
+                >
+                  <Ionicons name="globe-outline" size={16} color={newMissionType === 'public' ? '#22D3EE' : '#94A3B8'} />
+                  <Text style={[styles.typeBtnText, newMissionType === 'public' && styles.typeBtnTextActive]}>Publik (Paid)</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.formLabel}>Judul Misi</Text>
+              <TextInput 
+                style={styles.formInput} 
+                value={newTitle} 
+                onChangeText={setNewTitle} 
+                placeholder="Contoh: Belajar UTBK Bareng Temen" 
+                placeholderTextColor="#64748B" 
+              />
+
+              <Text style={styles.formLabel}>Deskripsi Aksi</Text>
+              <TextInput 
+                style={[styles.formInput, { height: 70, textAlignVertical: 'top' }]} 
+                multiline 
+                value={newDesc} 
+                onChangeText={setNewDesc} 
+                placeholder="Jelaskan apa yang harus dilakukan..." 
+                placeholderTextColor="#64748B" 
+              />
+
+              <Text style={styles.formLabel}>Nama Lokasi</Text>
+              <TextInput 
+                style={styles.formInput} 
+                value={newLocation} 
+                onChangeText={setNewLocation} 
+                placeholder="Contoh: Perpusda / Rumah Belajar" 
+                placeholderTextColor="#64748B" 
+              />
+
+              <Text style={styles.formLabel}>Kategori</Text>
+              <View style={styles.categorySelector}>
+                {['Hewan', 'Sosial', 'Kemanusiaan', 'Lingkungan'].map((cat) => (
+                  <TouchableOpacity 
+                    key={cat} 
+                    style={[styles.categoryBtn, newCategory === cat && styles.categoryBtnActive]} 
+                    onPress={() => setNewCategory(cat)}
+                  >
+                    <Text style={[styles.categoryBtnText, newCategory === cat && styles.categoryBtnTextActive]}>{cat}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.formLabel}>Mode Kolaborasi</Text>
+              <View style={styles.categorySelector}>
+                {[
+                  { id: 'solo', name: '👤 Solo' },
+                  { id: 'group', name: '👥 Group' },
+                  { id: 'community', name: '🏢 Komunitas' }
+                ].map((m) => (
+                  <TouchableOpacity 
+                    key={m.id} 
+                    style={[styles.categoryBtn, newMode === m.id && styles.categoryBtnActive]} 
+                    onPress={() => setNewMode(m.id as any)}
+                  >
+                    <Text style={[styles.categoryBtnText, newMode === m.id && styles.categoryBtnTextActive]}>{m.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {newMissionType === 'public' ? (
+                <>
+                  <Text style={styles.formLabel}>Aura Points untuk Pekerja</Text>
+                  <TextInput 
+                    style={styles.formInput} 
+                    keyboardType="numeric" 
+                    value={newPoints} 
+                    onChangeText={setNewPoints} 
+                  />
+
+                  <Text style={styles.formLabel}>Metode Pembayaran Misi</Text>
+                  <View style={styles.paymentMethodRow}>
+                    <TouchableOpacity 
+                      style={[styles.paymentBtn, paymentMethod === 'points' && styles.paymentBtnActive]}
+                      onPress={() => setPaymentMethod('points')}
+                    >
+                      <Ionicons name="sparkles-outline" size={16} color={paymentMethod === 'points' ? '#FACC15' : '#94A3B8'} />
+                      <Text style={[styles.paymentBtnText, paymentMethod === 'points' && styles.paymentBtnTextActive]}>
+                        100 Aura
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.paymentBtn, paymentMethod === 'qris' && styles.paymentBtnActive]}
+                      onPress={() => setPaymentMethod('qris')}
+                    >
+                      <Ionicons name="qr-code-outline" size={16} color={paymentMethod === 'qris' ? '#22D3EE' : '#94A3B8'} />
+                      <Text style={[styles.paymentBtnText, paymentMethod === 'qris' && styles.paymentBtnTextActive]}>
+                        QRIS (Rp15.000)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <Text style={styles.infoText}>
+                  * Misi personal bersifat gratis, tidak memberikan poin, dan berfungsi sebagai alarm kebaikan harian Anda (anti-cheat).
+                </Text>
+              )}
+
+              <TouchableOpacity 
+                style={styles.formSaveBtn} 
+                onPress={handlePublishMission}
+                disabled={isCreatingMissionLoading}
+              >
+                {isCreatingMissionLoading ? (
+                  <ActivityIndicator color="#0F172A" size="small" />
+                ) : (
+                  <Text style={styles.formSaveText}>
+                    {newMissionType === 'personal' ? 'Simpan Pengingat' : 'Terbitkan Misi Publik'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* Modal QRIS BeKind */}
+      {showQRISPaymentModal && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>📱 SCAN QRIS BEKIND</Text>
+              <TouchableOpacity onPress={() => setShowQRISPaymentModal(false)}>
+                <Ionicons name="close" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.qrisContainer}>
+              <Text style={styles.qrisPrice}>Total Pembayaran: Rp15.000</Text>
+              <Text style={styles.qrisInstruction}>
+                Scan QRIS di bawah dengan aplikasi e-wallet Anda:
+              </Text>
+              
+              {qrisUrl ? (
+                <Image source={{ uri: qrisUrl }} style={styles.qrisImage} />
+              ) : (
+                <ActivityIndicator color="#06B6D4" size="large" />
+              )}
+
+              <Text style={styles.qrisMerchant}>Merchant: BeKind Social Network</Text>
+              
+              <TouchableOpacity 
+                style={styles.qrisPayBtn} 
+                onPress={handleQRISPaymentSuccess}
+                disabled={isCreatingMissionLoading}
+              >
+                {isCreatingMissionLoading ? (
+                  <ActivityIndicator color="#0F172A" size="small" />
+                ) : (
+                  <Text style={styles.qrisPayBtnText}>Simulasikan Sukses Pembayaran</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Modal Panel Verifikasi Pekerjaan */}
+      {showEOAdminPanel && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>📋 PANEL VERIFIKASI PEKERJAAN</Text>
+              <TouchableOpacity onPress={() => setShowEOAdminPanel(false)}>
+                <Ionicons name="close" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Tab Selector */}
+            <View style={styles.tabHeader}>
+              <TouchableOpacity 
+                style={[styles.tabBtn, verificationTab === 'public' && styles.tabBtnActive]} 
+                onPress={() => setVerificationTab('public')}
+              >
+                <Text style={[styles.tabBtnText, verificationTab === 'public' && styles.tabBtnTextActive]}>Misi Publik</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.tabBtn, verificationTab === 'event' && styles.tabBtnActive]} 
+                onPress={() => setVerificationTab('event')}
+              >
+                <Text style={[styles.tabBtnText, verificationTab === 'event' && styles.tabBtnTextActive]}>Misi Event (EO/Admin)</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {pendingVerifications.filter((item) => {
+                if (verificationTab === 'public') {
+                  return item.mission?.type === 'public';
+                } else {
+                  return item.mission?.is_event_mission === true;
+                }
+              }).length > 0 ? (
+                pendingVerifications.filter((item) => {
+                  if (verificationTab === 'public') {
+                    return item.mission?.type === 'public';
+                  } else {
+                    return item.mission?.is_event_mission === true;
+                  }
+                }).map((item) => (
+                  <View key={item.id} style={styles.verificationCard}>
+                    <View style={styles.verifHeaderRow}>
+                      <Text style={styles.verifWorker}>Pekerja: @{item.user_id === 'm_current_user' ? 'Budi_Peka (Anda)' : 'user_bekind'}</Text>
+                      <Text style={styles.verifPoints}>+{item.points_gained} Aura</Text>
+                    </View>
+                    
+                    <Text style={styles.verifMissionTitle}>{item.mission?.title}</Text>
+                    <Text style={styles.verifLocation}><Ionicons name="pin" size={11} color="#64748B" /> {item.mission?.location_name}</Text>
+                    
+                    {item.photo_url && (
+                      <Image source={{ uri: item.photo_url }} style={styles.verifPhoto} />
+                    )}
+
+                    <View style={styles.verifActionRow}>
+                      <TouchableOpacity 
+                        style={styles.verifApproveBtn}
+                        onPress={() => handleApproveCompletion(item.id)}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={16} color="#0F172A" />
+                        <Text style={styles.verifApproveText}>Setujui</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={styles.verifRejectBtn}
+                        onPress={() => handleRejectCompletion(item.id)}
+                      >
+                        <Ionicons name="close-circle-outline" size={16} color="#EF4444" />
+                        <Text style={styles.verifRejectText}>Tolak</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.verifEmptyState}>
+                  <Ionicons name="shield-checkmark-outline" size={40} color="#475569" />
+                  <Text style={styles.verifEmptyText}>Tidak ada verifikasi pending untuk kategori ini.</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* Modal CS Dispute Laporan */}
+      {disputingCompletion && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>🚨 LAPORKAN KECURANGAN / DISPUTE</Text>
+              <TouchableOpacity onPress={() => setDisputingCompletion(null)}>
+                <Ionicons name="close" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={styles.disputeIntro}>
+                Gunakan menu ini jika penerbit misi sengaja menolak bukti Anda atau tidak mengkonfirmasinya dalam batas waktu wajar. CS BeKind akan meninjau bukti foto Anda secara manual.
+              </Text>
+              
+              <Text style={styles.disputeDetails}>
+                Misi: {disputingCompletion.mission?.title} {'\n'}
+                Poin: +{disputingCompletion.points_gained} Aura Points
+              </Text>
+
+              <Text style={styles.formLabel}>Alasan Laporan / Kronologi</Text>
+              <TextInput
+                style={[styles.formInput, { height: 100, textAlignVertical: 'top' }]}
+                multiline
+                value={disputeReason}
+                onChangeText={setDisputeReason}
+                placeholder="Tulis alasan kronologis secara singkat. Contoh: Bukti foto sudah valid menampilkan pakan kucing namun penerbit menolak sepihak."
+                placeholderTextColor="#64748B"
+              />
+
+              <TouchableOpacity 
+                style={styles.disputeSubmitBtn} 
+                onPress={handleDisputeReport}
+              >
+                <Text style={styles.disputeSubmitText}>Kirim Laporan Sengketa</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
       {/* Background neon glow */}
       <View style={styles.glowViolet} />
 
@@ -496,14 +1046,37 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Tombol Kelola Misi (Admin Panel) */}
-        <TouchableOpacity 
-          style={styles.adminPanelBtn} 
-          onPress={() => setShowAdminPanel(true)}
-        >
-          <Ionicons name="settings-outline" size={18} color="#06B6D4" />
-          <Text style={styles.adminPanelBtnText}>Panel Kelola Misi (Admin CRUD)</Text>
-        </TouchableOpacity>
+        {/* Action Panel Group */}
+        <View style={styles.actionPanelRow}>
+          <TouchableOpacity 
+            style={[styles.actionBtnCard, { borderColor: '#06B6D4' }]} 
+            onPress={() => setShowCreateMissionModal(true)}
+          >
+            <Ionicons name="add-circle-outline" size={24} color="#06B6D4" />
+            <Text style={styles.actionBtnText}>Buat Misi</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionBtnCard, { borderColor: '#8B5CF6' }]} 
+            onPress={() => setShowAdminPanel(true)}
+          >
+            <Ionicons name="settings-outline" size={24} color="#8B5CF6" />
+            <Text style={styles.actionBtnText}>CRUD Misi</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionBtnCard, { borderColor: '#FACC15' }]} 
+            onPress={() => setShowEOAdminPanel(true)}
+          >
+            <Ionicons name="checkbox-outline" size={24} color="#FACC15" />
+            {pendingVerifications.length > 0 && (
+              <View style={styles.badgeCount}>
+                <Text style={styles.badgeText}>{pendingVerifications.length}</Text>
+              </View>
+            )}
+            <Text style={styles.actionBtnText}>Verifikasi</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Active Mission Action (Klaim Bukti) */}
         {activeSuggestion && activeSuggestion.status === 'accepted' && (
@@ -533,17 +1106,32 @@ export default function ProfileScreen() {
         )}
 
         {/* Gamifikasi: Leaderboard / Papan Peringkat */}
-        <Text style={styles.sectionTitle}>Peka-Leaderboard (Bandung Gen Z)</Text>
+        <View style={styles.leaderboardHeaderRow}>
+          <Text style={styles.sectionTitle}>Peka-Leaderboard (Top 10 Bulanan)</Text>
+          <TouchableOpacity 
+            style={styles.rewardsInfoBtn}
+            onPress={() => setShowRewardsModal(true)}
+          >
+            <Ionicons name="gift-outline" size={14} color="#FACC15" />
+            <Text style={styles.rewardsInfoBtnText}>Hadiah</Text>
+          </TouchableOpacity>
+        </View>
+        
+        <View style={styles.countdownContainer}>
+          <Ionicons name="time-outline" size={14} color="#94A3B8" />
+          <Text style={styles.countdownText}>Berakhir dalam: {countdown}</Text>
+        </View>
+
         <View style={styles.leaderboardCard}>
-          {updatedLeaderboard.map((item, index) => {
-            const isUser = item.name.includes('Lu');
+          {leaderboard.map((item, index) => {
+            const isUser = item.name.includes('You') || item.name.includes('Lu');
             return (
               <View 
                 key={index} 
                 style={[
                   styles.leaderboardItem,
                   isUser && styles.leaderboardItemUser,
-                  index === updatedLeaderboard.length - 1 && { borderBottomWidth: 0 }
+                  index === leaderboard.length - 1 && { borderBottomWidth: 0 }
                 ]}
               >
                 <View style={styles.leadLeft}>
@@ -589,6 +1177,41 @@ export default function ProfileScreen() {
                     </Text>
                     <Text style={styles.historyPoints}>+{item.points_gained} Aura</Text>
                   </View>
+
+                  {/* Status Badge & Dispute Button */}
+                  <View style={styles.historyStatusRow}>
+                    {item.status === 'approved' && (
+                      <View style={[styles.statusBadge, { backgroundColor: 'rgba(52, 211, 153, 0.15)', borderColor: '#34D399' }]}>
+                        <Text style={[styles.statusBadgeText, { color: '#34D399' }]}>Disetujui</Text>
+                      </View>
+                    )}
+                    {item.status === 'pending' && (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flex: 1, marginTop: 6 }}>
+                        <View style={[styles.statusBadge, { backgroundColor: 'rgba(250, 204, 21, 0.15)', borderColor: '#FACC15' }]}>
+                          <Text style={[styles.statusBadgeText, { color: '#FACC15' }]}>Pending</Text>
+                        </View>
+                        <TouchableOpacity 
+                          style={styles.disputeReportBtn} 
+                          onPress={() => setDisputingCompletion(item)}
+                        >
+                          <Text style={styles.disputeReportText}>Laporkan CS</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {item.status === 'disputed' && (
+                      <View style={{ flex: 1, marginTop: 6 }}>
+                        <View style={[styles.statusBadge, { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: '#EF4444' }]}>
+                          <Text style={[styles.statusBadgeText, { color: '#EF4444' }]}>Sengketa</Text>
+                        </View>
+                        {item.report_reason && (
+                          <Text style={styles.disputeReasonText} numberOfLines={1}>
+                            Ket: {item.report_reason}
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
+
                 </View>
               </View>
             ))}
@@ -1275,5 +1898,437 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontSize: 14,
     fontWeight: '700',
+  },
+  actionPanelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 25,
+  },
+  actionBtnCard: {
+    flex: 1,
+    backgroundColor: 'rgba(30, 41, 59, 0.6)',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    gap: 6,
+    position: 'relative',
+  },
+  actionBtnText: {
+    color: '#CBD5E1',
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  badgeCount: {
+    position: 'absolute',
+    top: 6,
+    right: 18,
+    backgroundColor: '#EF4444',
+    borderRadius: 9,
+    width: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  leaderboardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  rewardsInfoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(250, 204, 21, 0.12)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(250, 204, 21, 0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    gap: 4,
+  },
+  rewardsInfoBtnText: {
+    color: '#FACC15',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  countdownContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 12,
+  },
+  countdownText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 3000,
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#1E293B',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#334155',
+    width: '100%',
+    maxHeight: '85%',
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+    paddingBottom: 10,
+  },
+  modalTitle: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#F8FAFC',
+    letterSpacing: 0.5,
+  },
+  rewardIntro: {
+    color: '#94A3B8',
+    fontSize: 12,
+    lineHeight: 16,
+    marginBottom: 16,
+  },
+  rewardList: {
+    gap: 10,
+    marginBottom: 16,
+  },
+  rewardItem: {
+    backgroundColor: 'rgba(30, 41, 59, 0.6)',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  rewardRank: {
+    color: '#FACC15',
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  rewardGift: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  rewardBadge: {
+    color: '#06B6D4',
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  rewardDisclaimer: {
+    color: '#64748B',
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  typeSelectorRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  typeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 12,
+    paddingVertical: 10,
+  },
+  typeBtnActive: {
+    borderColor: '#22D3EE',
+    backgroundColor: 'rgba(34, 211, 238, 0.08)',
+  },
+  typeBtnText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  typeBtnTextActive: {
+    color: '#22D3EE',
+  },
+  paymentMethodRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  paymentBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
+    borderRadius: 12,
+    paddingVertical: 10,
+  },
+  paymentBtnActive: {
+    borderColor: '#FACC15',
+    backgroundColor: 'rgba(250, 204, 21, 0.08)',
+  },
+  paymentBtnText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  paymentBtnTextActive: {
+    color: '#FACC15',
+  },
+  infoText: {
+    color: '#94A3B8',
+    fontSize: 10,
+    lineHeight: 14,
+    marginBottom: 16,
+    fontStyle: 'italic',
+  },
+  qrisContainer: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  qrisPrice: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FACC15',
+    marginBottom: 4,
+  },
+  qrisInstruction: {
+    fontSize: 11,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  qrisImage: {
+    width: 200,
+    height: 200,
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    marginBottom: 15,
+  },
+  qrisMerchant: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+    marginBottom: 20,
+  },
+  qrisPayBtn: {
+    backgroundColor: '#34D399',
+    width: '100%',
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrisPayBtnText: {
+    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  tabHeader: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+    paddingBottom: 10,
+  },
+  tabBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabBtnActive: {
+    borderBottomColor: '#22D3EE',
+  },
+  tabBtnText: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  tabBtnTextActive: {
+    color: '#22D3EE',
+  },
+  verificationCard: {
+    backgroundColor: 'rgba(30, 41, 59, 0.6)',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+    marginBottom: 12,
+  },
+  verifHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  verifWorker: {
+    color: '#06B6D4',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  verifPoints: {
+    color: '#34D399',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  verifMissionTitle: {
+    color: '#F8FAFC',
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  verifLocation: {
+    color: '#64748B',
+    fontSize: 10,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  verifPhoto: {
+    width: '100%',
+    height: 120,
+    borderRadius: 12,
+    backgroundColor: '#1E293B',
+    marginBottom: 10,
+  },
+  verifActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  verifApproveBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    height: 36,
+    backgroundColor: '#34D399',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+  },
+  verifApproveText: {
+    color: '#0F172A',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  verifRejectBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    height: 36,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+  },
+  verifRejectText: {
+    color: '#EF4444',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  verifEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+    gap: 10,
+  },
+  verifEmptyText: {
+    color: '#64748B',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  disputeIntro: {
+    color: '#94A3B8',
+    fontSize: 11,
+    lineHeight: 15,
+    marginBottom: 12,
+  },
+  disputeDetails: {
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(239, 68, 68, 0.2)',
+    borderRadius: 10,
+    padding: 10,
+    color: '#EF4444',
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 16,
+    marginBottom: 14,
+  },
+  disputeSubmitBtn: {
+    backgroundColor: '#FACC15',
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  disputeSubmitText: {
+    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  historyStatusRow: {
+    marginTop: 4,
+  },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: 0.5,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  statusBadgeText: {
+    fontSize: 8,
+    fontWeight: '800',
+  },
+  disputeReportBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 0.5,
+    borderColor: '#EF4444',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  disputeReportText: {
+    color: '#EF4444',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  disputeReasonText: {
+    color: '#94A3B8',
+    fontSize: 9,
+    fontStyle: 'italic',
+    marginTop: 4,
   },
 });

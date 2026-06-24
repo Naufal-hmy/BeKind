@@ -1,6 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // Radius bumi (km)
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 // Kredensial Supabase diambil dari environment variables
 // Jika belum diset, aplikasi otomatis berjalan dalam "Demo Mode" (Local Mock Storage)
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
@@ -281,20 +295,137 @@ export const dbService = {
   },
 
   // === MISSIONS ===
-  async getMissions() {
+  async getMissions(userCoords?: { latitude: number; longitude: number }) {
+    let missions: any[] = [];
     if (isDemoMode) {
       const data = await AsyncStorage.getItem('@missions');
-      return data ? JSON.parse(data) : INITIAL_MISSIONS;
+      missions = data ? JSON.parse(data) : [...INITIAL_MISSIONS];
     } else {
       const { data, error } = await supabase!
         .from('missions')
         .select('*');
       if (error) throw error;
-      return data;
+      missions = data || [];
     }
+
+    // Jika userCoords dikirim, lakukan check radius 10km.
+    // Jika kosong (tidak ada misi dekat user), kita auto-seeding misi di sekitar lokasi user tersebut
+    if (userCoords) {
+      const nearby = missions.filter((m: any) => {
+        // Hanya hitung misi system/public, personal diabaikan dari seeding peta
+        if (m.type === 'personal') return false;
+        const d = getDistance(userCoords.latitude, userCoords.longitude, m.latitude, m.longitude);
+        return d <= 10.0;
+      });
+
+      if (nearby.length === 0) {
+        const seededMissions = [
+          {
+            id: 'seeded_m1_' + Math.random().toString(36).substring(7),
+            title: 'Kasih Makan Kucing Gang',
+            description: 'Ada gerombolan kucing jalanan lucu di gang ini. Kasih mereka cat food kering atau basah biar kenyang.',
+            category: 'Hewan',
+            latitude: userCoords.latitude + 0.0035,
+            longitude: userCoords.longitude - 0.0041,
+            aura_points: 60,
+            location_name: 'Gang Sekitar Lokasi Lu',
+            type: 'system',
+            mode: 'solo',
+            is_event_mission: false
+          },
+          {
+            id: 'seeded_m2_' + Math.random().toString(36).substring(7),
+            title: 'Melariskan Jualan Warung Sepi',
+            description: 'Ada warung kelontong kecil/pedagang gerobak tua di dekat sini. Beli cemilan atau minuman ringan untuk melariskan dagangannya.',
+            category: 'Sosial',
+            latitude: userCoords.latitude - 0.0052,
+            longitude: userCoords.longitude + 0.0038,
+            aura_points: 80,
+            location_name: 'Warung/Pedagang Kaki Lima Terdekat',
+            type: 'system',
+            mode: 'group',
+            is_event_mission: false
+          },
+          {
+            id: 'seeded_m3_' + Math.random().toString(36).substring(7),
+            title: 'Bagi Es Teh Manis buat Abang Ojol & Pemulung',
+            description: 'Cuaca panas terik. Beli es teh manis atau air mineral dingin, bagikan ke abang ojol atau pemulung yang berjuang di jalan.',
+            category: 'Kemanusiaan',
+            latitude: userCoords.latitude + 0.0061,
+            longitude: userCoords.longitude + 0.0055,
+            aura_points: 70,
+            location_name: 'Pangkalan Ojek / Pinggir Jalan Raya',
+            type: 'system',
+            mode: 'solo',
+            is_event_mission: false
+          },
+          {
+            id: 'seeded_m4_' + Math.random().toString(36).substring(7),
+            title: 'Operasi Bersih Sampah Plastik',
+            description: 'Ajak warga atau teman memungut sampah plastik di sepanjang trotoar/taman terdekat agar lingkungan asri.',
+            category: 'Lingkungan',
+            latitude: userCoords.latitude - 0.0029,
+            longitude: userCoords.longitude - 0.0075,
+            aura_points: 90,
+            location_name: 'Taman / Trotoar Publik Sekitar',
+            type: 'system',
+            mode: 'community',
+            is_event_mission: false
+          }
+        ];
+
+        if (isDemoMode) {
+          const updatedMissions = [...missions, ...seededMissions];
+          await AsyncStorage.setItem('@missions', JSON.stringify(updatedMissions));
+          return updatedMissions;
+        } else {
+          const { error: insertErr } = await supabase!
+            .from('missions')
+            .insert(seededMissions.map((m: any) => ({
+              title: m.title,
+              description: m.description,
+              category: m.category,
+              latitude: m.latitude,
+              longitude: m.longitude,
+              aura_points: m.aura_points,
+              location_name: m.location_name,
+              type: m.type,
+              mode: m.mode,
+              is_event_mission: m.is_event_mission
+            })));
+          
+          if (!insertErr) {
+            const { data: refetched } = await supabase!.from('missions').select('*');
+            if (refetched) return refetched;
+          }
+        }
+      }
+    }
+
+    return missions;
   },
 
-  async addMission(title: string, description: string, category: string, latitude: number, longitude: number, auraPoints: number, locationName: string) {
+  async addMission(
+    title: string, 
+    description: string, 
+    category: string, 
+    latitude: number, 
+    longitude: number, 
+    auraPoints: number, 
+    locationName: string,
+    type: 'system' | 'personal' | 'public' = 'system',
+    mode: 'solo' | 'group' | 'community' = 'solo',
+    paymentMethod: string | null = null,
+    paymentStatus: string | null = null,
+    isEventMission: boolean = false,
+    eventName: string | null = null
+  ) {
+    let creatorId = null;
+    if (!isDemoMode) {
+      const { data: userData } = await supabase!.auth.getUser();
+      creatorId = userData?.user?.id || null;
+    }
+
     const newMission = {
       id: Math.random().toString(36).substring(7),
       title,
@@ -304,7 +435,20 @@ export const dbService = {
       longitude,
       aura_points: auraPoints,
       location_name: locationName,
+      type,
+      mode,
+      creator_id: creatorId,
+      payment_method: paymentMethod,
+      payment_status: paymentStatus,
+      is_event_mission: isEventMission,
+      event_name: eventName,
     };
+
+    // Jika bayar pakai Aura Points, kurangi poin
+    if (type === 'public' && paymentMethod === 'points') {
+      await this.updateAuraPoints(-100);
+    }
+
     if (isDemoMode) {
       const dataStr = await AsyncStorage.getItem('@missions');
       const missions = dataStr ? JSON.parse(dataStr) : [...INITIAL_MISSIONS];
@@ -314,7 +458,22 @@ export const dbService = {
     } else {
       const { data, error } = await supabase!
         .from('missions')
-        .insert([{ title, description, category, latitude, longitude, aura_points: auraPoints, location_name: locationName }])
+        .insert([{ 
+          title, 
+          description, 
+          category, 
+          latitude, 
+          longitude, 
+          aura_points: auraPoints, 
+          location_name: locationName,
+          type,
+          mode,
+          creator_id: creatorId,
+          payment_method: paymentMethod,
+          payment_status: paymentStatus,
+          is_event_mission: isEventMission,
+          event_name: eventName
+        }])
         .select()
         .single();
       if (error) throw error;
@@ -461,54 +620,328 @@ export const dbService = {
   },
 
   async completeMission(suggestionId: string, missionId: string, photoUri: string, auraPoints: number) {
-    const newCompletion = {
-      id: Math.random().toString(36).substring(7),
-      mission_id: missionId,
-      photo_url: photoUri,
-      completed_at: new Date().toISOString(),
-      points_gained: auraPoints,
-    };
+    let missions: any[] = [];
+    if (isDemoMode) {
+      const data = await AsyncStorage.getItem('@missions');
+      missions = data ? JSON.parse(data) : INITIAL_MISSIONS;
+    } else {
+      const { data } = await supabase!.from('missions').select('*');
+      missions = data || [];
+    }
+    const mission = missions.find((m: any) => m.id === missionId) || { type: 'system', is_event_mission: false };
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    let finalPointsGained = 0;
+    let targetStatus = 'approved';
 
     if (isDemoMode) {
-      // 1. Tambah ke completed missions
+      // 1. Ambil Profil
+      const profileStr = await AsyncStorage.getItem('@profile');
+      const profile = profileStr ? JSON.parse(profileStr) : { ...INITIAL_PROFILE };
+
+      if (profile.daily_streak === undefined) profile.daily_streak = 0;
+      if (profile.personal_streak === undefined) profile.personal_streak = 0;
+
+      if (mission.type === 'personal') {
+        // Update Personal Habit Streak (tidak berpengaruh ke multiplier)
+        const lastDate = profile.last_personal_streak_date;
+        if (!lastDate) {
+          profile.personal_streak = 1;
+        } else {
+          const prevDate = new Date(lastDate);
+          const diffTime = Math.abs(new Date(todayStr).getTime() - prevDate.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (diffDays === 1) profile.personal_streak += 1;
+          else if (diffDays > 1) profile.personal_streak = 1;
+        }
+        profile.last_personal_streak_date = todayStr;
+        finalPointsGained = 0;
+      } else {
+        // Update Leaderboard Streak (Misi System/Public)
+        const lastDate = profile.last_streak_date;
+        let activeStreak = profile.daily_streak || 0;
+        if (!lastDate) {
+          activeStreak = 1;
+        } else {
+          const prevDate = new Date(lastDate);
+          const diffTime = Math.abs(new Date(todayStr).getTime() - prevDate.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (diffDays === 1) activeStreak += 1;
+          else if (diffDays > 1) activeStreak = 1;
+        }
+        profile.daily_streak = activeStreak;
+        profile.last_streak_date = todayStr;
+
+        const multiplier = 1.0 + Math.min(activeStreak * 0.05, 0.50);
+        finalPointsGained = Math.round(auraPoints * multiplier);
+
+        if (mission.type === 'public') {
+          targetStatus = 'pending';
+        } else if (mission.is_event_mission) {
+          targetStatus = 'pending';
+        }
+
+        if (targetStatus === 'approved') {
+          profile.aura_points += finalPointsGained;
+          if (profile.aura_points >= 500) profile.level = 'Kaisar Empati';
+          else if (profile.aura_points >= 300) profile.level = 'Pahlawan Peka';
+          else if (profile.aura_points >= 200) profile.level = 'Bestie Peduli';
+          else profile.level = 'Peka-Beginner';
+        }
+      }
+
+      await AsyncStorage.setItem('@profile', JSON.stringify(profile));
+
+      // 2. Tambah ke completed missions
       const completedStr = await AsyncStorage.getItem('@completed_missions');
       const completed = completedStr ? JSON.parse(completedStr) : [];
       
-      const missionsStr = await AsyncStorage.getItem('@missions');
-      const missions = missionsStr ? JSON.parse(missionsStr) : INITIAL_MISSIONS;
-      const mission = missions.find((m: any) => m.id === missionId);
+      const newCompletion = {
+        id: Math.random().toString(36).substring(7),
+        user_id: 'm_current_user',
+        mission_id: missionId,
+        photo_url: photoUri,
+        completed_at: new Date().toISOString(),
+        points_gained: finalPointsGained,
+        status: targetStatus,
+        report_reason: null,
+        reported_at: null,
+        mission,
+      };
 
-      const fullCompletion = { ...newCompletion, mission };
-      completed.unshift(fullCompletion);
+      completed.unshift(newCompletion);
       await AsyncStorage.setItem('@completed_missions', JSON.stringify(completed));
 
-      // 2. Update status suggestion
-      await this.updateSuggestionStatus(suggestionId, 'completed');
-
-      // 3. Tambah Aura Points ke Profile
-      await this.updateAuraPoints(auraPoints);
-
-      return fullCompletion;
+      // 3. Update status suggestion
+      await this.updateSuggestionStatus(suggestionId, targetStatus === 'approved' ? 'completed' : 'accepted');
+      return newCompletion;
     } else {
-      // Insert ke tabel completed_missions
+      const { data: userData, error: userError } = await supabase!.auth.getUser();
+      if (userError || !userData.user) throw new Error('User tidak terautentikasi');
+      const userId = userData.user.id;
+
+      const { data: profile, error: profileErr } = await supabase!
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      if (profileErr) throw profileErr;
+
+      const updateData: any = {};
+
+      if (mission.type === 'personal') {
+        const lastDate = profile.last_personal_streak_date;
+        let personalStreak = profile.personal_streak || 0;
+        if (!lastDate) {
+          personalStreak = 1;
+        } else {
+          const prevDate = new Date(lastDate);
+          const diffTime = Math.abs(new Date(todayStr).getTime() - prevDate.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (diffDays === 1) personalStreak += 1;
+          else if (diffDays > 1) personalStreak = 1;
+        }
+        updateData.personal_streak = personalStreak;
+        updateData.last_personal_streak_date = todayStr;
+        finalPointsGained = 0;
+      } else {
+        const lastDate = profile.last_streak_date;
+        let activeStreak = profile.daily_streak || 0;
+        if (!lastDate) {
+          activeStreak = 1;
+        } else {
+          const prevDate = new Date(lastDate);
+          const diffTime = Math.abs(new Date(todayStr).getTime() - prevDate.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          if (diffDays === 1) activeStreak += 1;
+          else if (diffDays > 1) activeStreak = 1;
+        }
+        updateData.daily_streak = activeStreak;
+        updateData.last_streak_date = todayStr;
+
+        const multiplier = 1.0 + Math.min(activeStreak * 0.05, 0.50);
+        finalPointsGained = Math.round(auraPoints * multiplier);
+
+        if (mission.type === 'public') {
+          targetStatus = 'pending';
+        } else if (mission.is_event_mission) {
+          targetStatus = 'pending';
+        }
+
+        if (targetStatus === 'approved') {
+          updateData.aura_points = profile.aura_points + finalPointsGained;
+          let level = 'Peka-Beginner';
+          if (updateData.aura_points >= 500) level = 'Kaisar Empati';
+          else if (updateData.aura_points >= 300) level = 'Pahlawan Peka';
+          else if (updateData.aura_points >= 200) level = 'Bestie Peduli';
+          updateData.level = level;
+        }
+      }
+
+      const { error: profileUpErr } = await supabase!
+        .from('profiles')
+        .update(updateData)
+        .eq('id', userId);
+      if (profileUpErr) throw profileUpErr;
+
       const { data, error } = await supabase!
         .from('completed_missions')
         .insert([{
+          user_id: userId,
           mission_id: missionId,
           photo_url: photoUri,
-          points_gained: auraPoints
+          points_gained: finalPointsGained,
+          status: targetStatus
         }])
         .select('*, mission:missions(*)')
         .single();
       if (error) throw error;
 
-      // Update suggestion
-      await this.updateSuggestionStatus(suggestionId, 'completed');
-
-      // Tambah Aura Points
-      await this.updateAuraPoints(auraPoints);
-
+      await this.updateSuggestionStatus(suggestionId, targetStatus === 'approved' ? 'completed' : 'accepted');
       return data;
+    }
+  },
+
+  async approveCompletedMission(completedMissionId: string) {
+    if (isDemoMode) {
+      const completedStr = await AsyncStorage.getItem('@completed_missions');
+      const completed = completedStr ? JSON.parse(completedStr) : [];
+      let points = 0;
+      
+      const updated = completed.map((c: any) => {
+        if (c.id === completedMissionId) {
+          points = c.points_gained;
+          return { ...c, status: 'approved' };
+        }
+        return c;
+      });
+      await AsyncStorage.setItem('@completed_missions', JSON.stringify(updated));
+
+      const profileStr = await AsyncStorage.getItem('@profile');
+      const profile = profileStr ? JSON.parse(profileStr) : { ...INITIAL_PROFILE };
+      profile.aura_points += points;
+      
+      if (profile.aura_points >= 500) profile.level = 'Kaisar Empati';
+      else if (profile.aura_points >= 300) profile.level = 'Pahlawan Peka';
+      else if (profile.aura_points >= 200) profile.level = 'Bestie Peduli';
+      else profile.level = 'Peka-Beginner';
+      
+      await AsyncStorage.setItem('@profile', JSON.stringify(profile));
+      return true;
+    } else {
+      const { data: comp, error: compErr } = await supabase!
+        .from('completed_missions')
+        .select('*')
+        .eq('id', completedMissionId)
+        .single();
+      if (compErr) throw compErr;
+
+      const { error: upErr } = await supabase!
+        .from('completed_missions')
+        .update({ status: 'approved' })
+        .eq('id', completedMissionId);
+      if (upErr) throw upErr;
+
+      const { data: workerProf, error: profErr } = await supabase!
+        .from('profiles')
+        .select('aura_points')
+        .eq('id', comp.user_id)
+        .single();
+      if (profErr) throw profErr;
+
+      const newPoints = workerProf.aura_points + comp.points_gained;
+      let level = 'Peka-Beginner';
+      if (newPoints >= 500) level = 'Kaisar Empati';
+      else if (newPoints >= 300) level = 'Pahlawan Peka';
+      else if (newPoints >= 200) level = 'Bestie Peduli';
+
+      const { error: workerUpErr } = await supabase!
+        .from('profiles')
+        .update({ aura_points: newPoints, level })
+        .eq('id', comp.user_id);
+      if (workerUpErr) throw workerUpErr;
+      return true;
+    }
+  },
+
+  async rejectCompletedMission(completedMissionId: string) {
+    if (isDemoMode) {
+      const completedStr = await AsyncStorage.getItem('@completed_missions');
+      const completed = completedStr ? JSON.parse(completedStr) : [];
+      const updated = completed.filter((c: any) => c.id !== completedMissionId);
+      await AsyncStorage.setItem('@completed_missions', JSON.stringify(updated));
+      return true;
+    } else {
+      const { error } = await supabase!
+        .from('completed_missions')
+        .delete()
+        .eq('id', completedMissionId);
+      if (error) throw error;
+      return true;
+    }
+  },
+
+  async reportDispute(completedMissionId: string, reason: string) {
+    if (isDemoMode) {
+      const completedStr = await AsyncStorage.getItem('@completed_missions');
+      const completed = completedStr ? JSON.parse(completedStr) : [];
+      const updated = completed.map((c: any) => {
+        if (c.id === completedMissionId) {
+          return {
+            ...c,
+            status: 'disputed',
+            report_reason: reason,
+            reported_at: new Date().toISOString()
+          };
+        }
+        return c;
+      });
+      await AsyncStorage.setItem('@completed_missions', JSON.stringify(updated));
+      return true;
+    } else {
+      const { error } = await supabase!
+        .from('completed_missions')
+        .update({
+          status: 'disputed',
+          report_reason: reason,
+          reported_at: new Date().toISOString()
+        })
+        .eq('id', completedMissionId);
+      if (error) throw error;
+      return true;
+    }
+  },
+
+  async getLeaderboard() {
+    if (isDemoMode) {
+      const profileStr = await AsyncStorage.getItem('@profile');
+      const profile = profileStr ? JSON.parse(profileStr) : { ...INITIAL_PROFILE };
+      
+      const LEADERBOARD = [
+        { rank: 1, name: 'Anya_Care', points: 720, level: 'Kaisar Empati' },
+        { rank: 2, name: `${profile.name} (You)`, points: profile.aura_points, level: profile.level },
+        { rank: 3, name: 'Fiki_Gacor', points: 120, level: 'Bestie Peduli' },
+        { rank: 4, name: 'Rey_Peka', points: 90, level: 'Peka-Beginner' },
+        { rank: 5, name: 'Caca_Kreatif', points: 50, level: 'Peka-Beginner' },
+      ];
+      return LEADERBOARD.sort((a, b) => b.points - a.points).map((item, idx) => ({ ...item, rank: idx + 1 }));
+    } else {
+      const { data, error } = await supabase!
+        .from('profiles')
+        .select('id, name, username, aura_points, level')
+        .order('aura_points', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      
+      const { data: userData } = await supabase!.auth.getUser();
+      const currentUserId = userData?.user?.id;
+      
+      return data.map((p: any, index: number) => ({
+        rank: index + 1,
+        name: p.name + (p.id === currentUserId ? ' (You)' : ''),
+        points: p.aura_points,
+        level: p.level
+      }));
     }
   },
 

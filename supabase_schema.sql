@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   aura_points INTEGER DEFAULT 0,
   level TEXT DEFAULT 'Peka-Beginner',
   avatar_url TEXT,
+  daily_streak INTEGER DEFAULT 0,
+  last_streak_date DATE DEFAULT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
@@ -55,18 +57,25 @@ CREATE TABLE IF NOT EXISTS public.missions (
   longitude DOUBLE PRECISION NOT NULL,
   aura_points INTEGER DEFAULT 50,
   location_name TEXT NOT NULL,
+  type TEXT DEFAULT 'system', -- 'system', 'personal', 'public'
+  mode TEXT DEFAULT 'solo', -- 'solo', 'group', 'community'
+  is_event_mission BOOLEAN DEFAULT false,
+  event_name TEXT DEFAULT NULL,
+  creator_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE DEFAULT NULL,
+  payment_method TEXT DEFAULT NULL, -- 'qris', 'points'
+  payment_status TEXT DEFAULT NULL, -- 'pending', 'paid'
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
 -- Enable RLS for Missions
 ALTER TABLE public.missions ENABLE ROW LEVEL SECURITY;
 
--- Create Missions Policies (Read-only for all, write for authenticated users)
-CREATE POLICY "Allow public read missions" ON public.missions
-  FOR SELECT USING (true);
+-- Create Missions Policies (Read-only for system and public, personal for own creator)
+CREATE POLICY "Read public and system missions, plus own personal" ON public.missions
+  FOR SELECT USING (type = 'system' OR type = 'public' OR creator_id = auth.uid());
 
 CREATE POLICY "Allow authenticated manage missions" ON public.missions
-  FOR ALL TO authenticated USING (true);
+  FOR ALL TO authenticated USING (creator_id = auth.uid() OR type = 'system' OR creator_id IS NULL);
 
 -- Seed Initial Missions Data
 INSERT INTO public.missions (title, description, category, latitude, longitude, aura_points, location_name)
@@ -105,6 +114,9 @@ CREATE TABLE IF NOT EXISTS public.completed_missions (
   mission_id UUID REFERENCES public.missions(id) ON DELETE CASCADE NOT NULL,
   photo_url TEXT NOT NULL,
   points_gained INTEGER NOT NULL,
+  status TEXT DEFAULT 'approved', -- 'pending', 'approved', 'disputed'
+  report_reason TEXT DEFAULT NULL,
+  reported_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
   completed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now())
 );
 
@@ -112,8 +124,15 @@ CREATE TABLE IF NOT EXISTS public.completed_missions (
 ALTER TABLE public.completed_missions ENABLE ROW LEVEL SECURITY;
 
 -- Create Completed Missions Policies
-CREATE POLICY "Users can view and manage their own completions" ON public.completed_missions
-  FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users can view and manage completions" ON public.completed_missions
+  FOR ALL USING (
+    auth.uid() = user_id 
+    OR EXISTS (
+      SELECT 1 FROM public.missions 
+      WHERE missions.id = completed_missions.mission_id 
+      AND missions.creator_id = auth.uid()
+    )
+  );
 
 -- 6. Trigger to automatically create profile on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()

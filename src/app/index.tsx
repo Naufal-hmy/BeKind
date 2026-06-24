@@ -142,6 +142,29 @@ export default function DashboardScreen() {
           </View>
         </View>
 
+        {/* Kindness Streak & Habit Streak Row */}
+        <View style={styles.streakRow}>
+          <View style={styles.streakCard}>
+            <View style={styles.streakHeader}>
+              <Ionicons name="flame" size={20} color="#F59E0B" />
+              <Text style={styles.streakTitle}>Streak Peka</Text>
+            </View>
+            <Text style={styles.streakVal}>{profile.daily_streak || 0} Hari</Text>
+            <Text style={styles.streakDesc}>
+              Mul: x{(1 + Math.min((profile.daily_streak || 0) * 0.05, 0.50)).toFixed(2)} (+{Math.round(Math.min((profile.daily_streak || 0) * 0.05, 0.50) * 100)}% Bonus)
+            </Text>
+          </View>
+          
+          <View style={styles.streakCard}>
+            <View style={styles.streakHeader}>
+              <Ionicons name="heart" size={20} color="#EC4899" />
+              <Text style={styles.streakTitle}>Streak Kebiasaan</Text>
+            </View>
+            <Text style={styles.streakVal}>{profile.personal_streak || 0} Hari</Text>
+            <Text style={styles.streakDesc}>Pengingat Kebaikan Mandiri</Text>
+          </View>
+        </View>
+
         {/* Section Agent Status */}
         <View style={styles.sectionTitleContainer}>
           <Ionicons name="hardware-chip" size={18} color="#A7F3D0" />
@@ -202,8 +225,15 @@ export default function DashboardScreen() {
         {activeSuggestion ? (
           <View style={styles.suggestionCard}>
             <View style={styles.suggestionHeader}>
-              <View style={styles.categoryBadge}>
-                <Text style={styles.categoryText}>{activeSuggestion.mission?.category || 'Umum'}</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryText}>{activeSuggestion.mission?.category || 'Umum'}</Text>
+                </View>
+                <View style={styles.modeBadge}>
+                  <Text style={styles.modeText}>
+                    {activeSuggestion.mission?.mode === 'group' ? '👥 Group' : activeSuggestion.mission?.mode === 'community' ? '🏢 Komunitas' : '👤 Solo'}
+                  </Text>
+                </View>
               </View>
               <View style={styles.pointsBadge}>
                 <Ionicons name="sparkles" size={12} color="#0F172A" />
@@ -227,6 +257,24 @@ export default function DashboardScreen() {
                 Waktu Luang: {activeSuggestion.free_start_time} - {activeSuggestion.free_end_time}
               </Text>
             </View>
+
+            {activeSuggestion.mission?.is_event_mission && (
+              <View style={styles.eventInfoContainer}>
+                <Ionicons name="ribbon-outline" size={14} color="#FACC15" />
+                <Text style={styles.eventInfoText}>
+                  Event: <Text style={{ fontWeight: '700' }}>{activeSuggestion.mission?.event_name}</Text> (Verifikasi EO)
+                </Text>
+              </View>
+            )}
+
+            {activeSuggestion.mission?.type === 'public' && (
+              <View style={styles.eventInfoContainer}>
+                <Ionicons name="person-circle-outline" size={14} color="#06B6D4" />
+                <Text style={styles.eventInfoText}>
+                  Penerbit: Misi Publik (Verifikasi Pembuat)
+                </Text>
+              </View>
+            )}
 
             {/* Tombol Aksi Misi berdasarkan Status */}
             {activeSuggestion.status === 'pending' ? (
@@ -709,5 +757,68 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 16,
+  },
+  modeBadge: {
+    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 0.5,
+    borderColor: 'rgba(6, 182, 212, 0.2)',
+  },
+  modeText: {
+    color: '#22D3EE',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  eventInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    gap: 6,
+    backgroundColor: 'rgba(30, 41, 59, 0.4)',
+    padding: 10,
+    borderRadius: 12,
+  },
+  eventInfoText: {
+    color: '#CBD5E1',
+    fontSize: 12,
+    flex: 1,
+  },
+  streakRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 15,
+    marginBottom: 25,
+  },
+  streakCard: {
+    flex: 1,
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    borderRadius: 20,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  streakHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  streakTitle: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  streakVal: {
+    color: '#F8FAFC',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  streakDesc: {
+    color: '#64748B',
+    fontSize: 10,
+    marginTop: 4,
+    fontWeight: '500',
   },
 });

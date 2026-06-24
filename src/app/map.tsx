@@ -40,7 +40,7 @@ export default function MapScreen() {
   useEffect(() => {
     async function fetchMissions() {
       try {
-        const list = await dbService.getMissions();
+        const list = await dbService.getMissions(currentLocation || undefined);
         setMissions(list);
         
         // Default select ke misi aktif jika ada
@@ -54,7 +54,7 @@ export default function MapScreen() {
       }
     }
     fetchMissions();
-  }, [activeSuggestion]);
+  }, [activeSuggestion, currentLocation]);
 
   // Handler saat pin misi ditekan
   const handleSelectMission = (mission: any) => {
@@ -253,6 +253,11 @@ export default function MapScreen() {
               <View style={styles.categoryBadge}>
                 <Text style={styles.categoryText}>{selectedMission.category}</Text>
               </View>
+              <View style={styles.modeBadge}>
+                <Text style={styles.modeText}>
+                  {selectedMission.mode === 'group' ? '👥 Group' : selectedMission.mode === 'community' ? '🏢 Komunitas' : '👤 Solo'}
+                </Text>
+              </View>
               {isCurrentActive && (
                 <View style={styles.activeBadge}>
                   <Text style={styles.activeText}>Misi Aktif</Text>
@@ -273,6 +278,22 @@ export default function MapScreen() {
           <View style={styles.locationInfo}>
             <Ionicons name="compass-outline" size={14} color="#94A3B8" />
             <Text style={styles.locationText}>Tempat: {selectedMission.location_name}</Text>
+          </View>
+
+          {/* Publisher / Event Organizer Info */}
+          <View style={styles.publisherInfo}>
+            <Ionicons 
+              name={selectedMission.is_event_mission ? "ribbon-outline" : "person-circle-outline"} 
+              size={14} 
+              color={selectedMission.is_event_mission ? "#FACC15" : "#06B6D4"} 
+            />
+            <Text style={styles.publisherText}>
+              {selectedMission.is_event_mission 
+                ? `Event: ${selectedMission.event_name} (Verifikasi EO)` 
+                : selectedMission.type === 'public' 
+                ? 'Misi Publik (Verifikasi Penerbit)' 
+                : 'Misi Resmi BeKind (Verifikasi Sistem)'}
+            </Text>
           </View>
 
           {/* Tombol Aksi */}
@@ -615,5 +636,28 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     fontSize: 13,
     fontWeight: '800',
+  },
+  modeBadge: {
+    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 0.5,
+    borderColor: 'rgba(6, 182, 212, 0.2)',
+  },
+  modeText: {
+    color: '#22D3EE',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  publisherInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  publisherText: {
+    color: '#94A3B8',
+    fontSize: 12,
   },
 });
