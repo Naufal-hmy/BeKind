@@ -24,6 +24,10 @@ CREATE POLICY "Allow public read profiles" ON public.profiles
 CREATE POLICY "Allow users to update own profile" ON public.profiles
   FOR UPDATE USING (auth.uid() = id);
 
+CREATE POLICY "Allow users to insert own profile" ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+
 -- 2. Create Schedules Table (User calendar busy hours)
 CREATE TABLE IF NOT EXISTS public.schedules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

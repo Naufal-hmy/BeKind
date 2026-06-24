@@ -124,7 +124,7 @@ export default function MapScreen() {
           const leftPos = mapCenterX + diffLon;
 
           const isSelected = selectedMission?.id === m.id;
-          const isActive = activeSuggestion?.mission_id === m.id && activeSuggestion.status === 'accepted';
+          const isActive = activeSuggestion?.mission_id === m.id && activeSuggestion?.status === 'accepted';
 
           return (
             <TouchableOpacity
@@ -183,7 +183,7 @@ export default function MapScreen() {
         {/* Missions markers */}
         {missions.map((m) => {
           const isSelected = selectedMission?.id === m.id;
-          const isActive = activeSuggestion?.mission_id === m.id && activeSuggestion.status === 'accepted';
+          const isActive = activeSuggestion?.mission_id === m.id && activeSuggestion?.status === 'accepted';
 
           return (
             <Marker
@@ -227,7 +227,7 @@ export default function MapScreen() {
     );
   };
 
-  const isCurrentActive = activeSuggestion?.mission_id === selectedMission?.id && activeSuggestion.status === 'accepted';
+  const isCurrentActive = activeSuggestion?.mission_id === selectedMission?.id && activeSuggestion?.status === 'accepted';
 
   return (
     <SafeAreaView style={styles.container}>
