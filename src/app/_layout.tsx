@@ -1,10 +1,19 @@
 import { Tabs } from 'expo-router';
-import { useColorScheme, View, StyleSheet, Platform, ActivityIndicator } from 'react-native';
+import { useColorScheme, View, StyleSheet, Platform, ActivityIndicator, LogBox } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
 import { AgentProvider } from '@/context/AgentContext';
 import { supabase, isDemoMode } from '@/services/database';
 import { AuthScreen } from '@/components/AuthScreen';
+
+// Sembunyikan peringatan/notifikasi yang mengganggu di layar perangkat
+LogBox.ignoreLogs([
+  'expo-notifications: Android Push notifications',
+  'SafeAreaView has been deprecated',
+  'Route "./explore.tsx" is missing',
+  'Too many screens defined',
+]);
+
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
